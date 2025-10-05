@@ -328,14 +328,28 @@ runAuditBtn.addEventListener('click', runFullAudit);
       // Ensure the SDK is loaded before calling createAuth0Client
       await loadAuth0Sdk();
 
-      if (typeof createAuth0Client !== 'function') {
-        throw new Error('createAuth0Client is not available after loading the SDK');
+      // The SDK may expose the factory as `createAuth0Client` or under the global `auth0` namespace
+      const findFactory = () => (typeof createAuth0Client === 'function' && createAuth0Client) || (window.auth0 && window.auth0.createAuth0Client);
+      let factory = findFactory();
+      const start = Date.now();
+      // Poll briefly (2s) in case the SDK attaches asynchronously
+      while (!factory && Date.now() - start < 2000) {
+        await new Promise((r) => setTimeout(r, 100));
+        factory = findFactory();
+      }
+      if (!factory) {
+        const diag = {
+          typeof_createAuth0Client: typeof createAuth0Client,
+          window_auth0_type: typeof window.auth0,
+          window_auth0_keys: window.auth0 ? Object.keys(window.auth0) : null
+        };
+        throw new Error('createAuth0Client is not available after loading the SDK; diagnostics: ' + JSON.stringify(diag));
       }
 
       // Use the exact callback path that matches your Auth0 application settings
       const callbackUrl = window.location.origin + '/Alfred/';
 
-      auth0 = await createAuth0Client({
+      auth0 = await factory({
         domain: AUTH0_DOMAIN,
         clientId: AUTH0_CLIENT_ID,
         authorizationParams: {
@@ -412,8 +426,8 @@ runAuditBtn.addEventListener('click', runFullAudit);
     // Debug button prints runtime Auth0 state
     debugBtn.addEventListener('click', () => {
       const callbackUrl = window.location.origin + '/Alfred/';
-      const sdkPresent = typeof createAuth0Client === 'function';
-      const clientPresent = !!auth0;
+  const sdkPresent = (typeof createAuth0Client === 'function') || (window.auth0 && typeof window.auth0.createAuth0Client === 'function');
+  const clientPresent = !!auth0;
       const info = {
         AUTH0_DOMAIN,
         AUTH0_CLIENT_ID,
