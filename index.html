@@ -20,8 +20,7 @@ AUTH0 SETUP INSTRUCTIONS:
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI-Powered Security Audit</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.auth0.com/js/auth0-spa-js/2.1/auth0-spa-js.production.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Inter', sans-serif; }
@@ -307,7 +306,26 @@ runAuditBtn.addEventListener('click', runFullAudit);
       return;
     }
 
+    // Helper to dynamically load the Auth0 SPA SDK if it's not already available
+    async function loadAuth0Sdk() {
+      if (window.createAuth0Client) return;
+      return new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.auth0.com/js/auth0-spa-js/2.1/auth0-spa-js.production.js';
+        s.onload = () => resolve();
+        s.onerror = (e) => reject(new Error('Failed to load Auth0 SDK'));
+        document.head.appendChild(s);
+      });
+    }
+
     try {
+      // Ensure the SDK is loaded before calling createAuth0Client
+      await loadAuth0Sdk();
+
+      if (typeof createAuth0Client !== 'function') {
+        throw new Error('createAuth0Client is not available after loading the SDK');
+      }
+
       // Use the exact callback path that matches your Auth0 application settings
       const callbackUrl = window.location.origin + '/Alfred/';
 
@@ -320,9 +338,9 @@ runAuditBtn.addEventListener('click', runFullAudit);
         cacheLocation: 'localstorage'
       });
     } catch (error) {
-      console.error("Error configuring Auth0:", error, error && error.message);
-      document.getElementById('auth-container').innerHTML = 
-        `<div class="text-red-400 text-sm">Auth0 configuration error. Please check your credentials.<br/><small>${(error && error.message) || ''}</small></div>`;
+      console.error('Error configuring Auth0:', error, error && error.message);
+      document.getElementById('auth-container').innerHTML =
+        `<div class="text-red-400 text-sm">Auth0 configuration error. Please check your credentials and network.<br/><small>${(error && error.message) || ''}</small></div>`;
     }
   }
 
