@@ -47,13 +47,16 @@
                     <label for="strategic-goal" class="block text-sm font-medium text-gray-300 mb-2">Strategic Goal</label>
                     <input type="text" id="strategic-goal" class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="e.g., 'Find and fix all critical vulnerabilities'">
                 </div>
-                <!-- NEW: Dedicated input for GitHub Token -->
+                
                 <div>
                     <label for="github-token" class="block text-sm font-medium text-gray-300 mb-2">
                         GitHub Personal Access Token
                         <a href="https://github.com/settings/tokens?type=beta" target="_blank" class="text-blue-400 hover:underline text-xs ml-2">(Create one)</a>
                     </label>
-                    <input type="password" id="github-token" class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="ghp_... (requires 'repo' scope)">
+                    <input type="password" id="github-token" class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="ghp_... or ghs_...">
+                    <p class="text-xs text-gray-400 mt-2">
+                        Create a <a href="https://github.com/settings/tokens?type=beta" target="_blank" class="text-blue-400 hover:underline">Fine-grained token</a> with <span class="font-mono bg-gray-900 px-1 rounded">'Read and write'</span> access to <span class="font-mono bg-gray-900 px-1 rounded">'Contents'</span>, <span class="font-mono bg-gray-900 px-1 rounded">'Issues'</span>, and <span class="font-mono bg-gray-900 px-1 rounded">'Pull requests'</span> for the target repository.
+                    </p>
                 </div>
             </div>
 
