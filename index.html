@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI-Powered Security Audit</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.auth0.com/js/auth0-spa-js/2.1/auth0-spa-js.production.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Inter', sans-serif; }
@@ -64,6 +65,15 @@
                 <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
                 Run Audit
             </button>
+
+            <div id="auth-container" class="mb-4">
+                <button id="btn-login" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Log In</button>
+                <button id="btn-logout" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded hidden">Log Out</button>
+                <div id="user-profile" class="mt-2 text-gray-300 hidden">
+                    <p id="user-name" class="font-semibold"></p>
+                    <p id="user-email" class="text-sm"></p>
+                </div>
+            </div>
 
             <div id="results-container" class="mt-8 hidden">
                 <h2 class="text-xl font-semibold mb-4 text-center">Audit in Progress...</h2>
@@ -243,6 +253,64 @@ const runFullAudit = async () => {
 
 runAuditBtn.addEventListener('click', runFullAudit);
 </script>
+<script>
+  let auth0 = null;
+
+  const loginBtn = document.getElementById('btn-login');
+  const logoutBtn = document.getElementById('btn-logout');
+  const userProfile = document.getElementById('user-profile');
+  const userName = document.getElementById('user-name');
+  const userEmail = document.getElementById('user-email');
+
+  async function configureClient() {
+    auth0 = await createAuth0Client({
+      domain: 'YOUR_AUTH0_DOMAIN',          // e.g., dev-abc123.us.auth0.com
+      client_id: 'YOUR_AUTH0_CLIENT_ID',   // e.g., abc123XYZ
+      authorizationParams: {
+        redirect_uri: window.location.origin + '/Alfred/'
+      },
+      cacheLocation: 'localstorage' // important for GitHub Pages
+    });
+  }
+
+  async function updateUI() {
+    const isAuthenticated = await auth0.isAuthenticated();
+
+    if (isAuthenticated) {
+      loginBtn.classList.add('hidden');
+      logoutBtn.classList.remove('hidden');
+      userProfile.classList.remove('hidden');
+
+      const user = await auth0.getUser();
+      userName.textContent = user.name || '';
+      userEmail.textContent = user.email || '';
+    } else {
+      loginBtn.classList.remove('hidden');
+      logoutBtn.classList.add('hidden');
+      userProfile.classList.add('hidden');
+      userName.textContent = '';
+      userEmail.textContent = '';
+    }
+  }
+
+  async function handleRedirectCallback() {
+    const query = window.location.search;
+    if (query.includes('code=') && query.includes('state=')) {
+      await auth0.handleRedirectCallback();
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }
+
+  window.onload = async () => {
+    await configureClient();
+    await handleRedirectCallback();
+    await updateUI();
+
+    loginBtn.addEventListener('click', () => auth0.loginWithRedirect());
+    logoutBtn.addEventListener('click', () => auth0.logout({ returnTo: window.location.origin + '/Alfred/' }));
+  };
+</script>
+
 </body>
 </html>
 
