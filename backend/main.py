@@ -3,21 +3,19 @@
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware # Import the CORS middleware
 from pydantic import BaseModel, Field, ValidationError
 import google.generativeai as genai
 import os
 from dotenv import load_dotenv
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List
 import json
-import ast # Import the Abstract Syntax Tree library to safely parse Python literals
 
 # --- Configuration ---
-# Explicitly load the .env file from the same directory as the script
 env_path = Path('.') / '.env'
 load_dotenv(dotenv_path=env_path)
 
-# Configure the Gemini API with your key
 try:
     api_key = os.environ["GOOGLE_API_KEY"]
     if not api_key:
@@ -26,13 +24,29 @@ try:
     print("Gemini API configured successfully.")
 except KeyError:
     print("ERROR: GOOGLE_API_KEY not found or is empty in your .env file.")
-    print("Please create a .env file in the 'backend' directory and add your Google API Key.")
     exit()
 
 # --- FastAPI App Initialization ---
 app = FastAPI(
     title="AI Security Audit Agent API",
     description="Provides endpoints for the different AI agents in the security audit workflow.",
+)
+
+# --- CORS Configuration ---
+# This is the crucial part that fixes the 'Failed to fetch' error.
+# It tells the server to allow requests from your GitHub Pages site.
+origins = [
+    "https://mahergzani.github.io", # Your live frontend URL
+    "http://localhost:8000",      # For local testing
+    "http://127.0.0.1:8000",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"], # Allows all methods (GET, POST, etc.)
+    allow_headers=["*"], # Allows all headers
 )
 
 # --- Agent 1: Security Manager ---
@@ -200,7 +214,6 @@ async def fix_vulnerability(request: FixRequest):
         response = model.generate_content(user_input)
         print(f"Generated Fix (raw): {response.text}")
         
-        # The model is configured to return JSON, so we can validate it directly
         return FixResponse.model_validate_json(response.text)
 
     except (ValidationError, json.JSONDecodeError) as e:
