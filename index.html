@@ -5,18 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI-Powered Security Audit</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Inter', sans-serif; }
-        .status-item.completed .icon { color: #10B981; }
-        .status-item.pending .icon { color: #F59E0B; }
-        .status-item.error .icon { color: #EF4444; }
-        .loader {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #3498db;
+        .status-item {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+        .status-item.pending { background-color: #374151; }
+        .status-item.success { background-color: #166534; color: #dcfce7; }
+        .status-item.error { background-color: #991b1b; color: #fee2e2; }
+        .spinner {
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #3b82f6;
             border-radius: 50%;
-            width: 24px;
-            height: 24px;
+            width: 16px;
+            height: 16px;
             animation: spin 1s linear infinite;
         }
         @keyframes spin {
@@ -26,216 +33,213 @@
     </style>
 </head>
 <body class="bg-gray-900 text-white flex items-center justify-center min-h-screen">
-    <div class="w-full max-w-4xl mx-auto p-4 md:p-8">
+    <div class="w-full max-w-2xl mx-auto p-4 md:p-8">
         <div class="bg-gray-800 rounded-2xl shadow-2xl p-6 md:p-10">
-            <header class="text-center mb-8">
-                <h1 class="text-4xl md:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">AI-Powered Security Audit</h1>
-                <p class="text-gray-400 mt-2 text-lg">Orchestrate a team of AI agents to find and fix vulnerabilities in your code.</p>
-            </header>
+            <h1 class="text-3xl md:text-4xl font-bold text-center mb-2 bg-gradient-to-r from-blue-400 to-purple-500 text-transparent bg-clip-text">AI-Powered Security Audit</h1>
+            <p class="text-center text-gray-400 mb-8">Orchestrate a team of AI agents to find and fix vulnerabilities in your code.</p>
 
-            <main>
-                <div class="space-y-6">
-                    <div>
-                        <label for="repo-url" class="block text-sm font-medium text-gray-300 mb-2">GitHub Repository URL</label>
-                        <input type="url" id="repo-url" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition" placeholder="https://github.com/user/repository">
-                    </div>
-                    <div>
-                        <label for="strategic-goal" class="block text-sm font-medium text-gray-300 mb-2">Strategic Goal</label>
-                        <textarea id="strategic-goal" rows="3" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition" placeholder="e.g., 'Ensure no sensitive data is exposed before our V2 launch.'"></textarea>
-                    </div>
-                    <button id="run-audit-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition-transform transform hover:scale-105 flex items-center justify-center text-lg">
-                        <i class="fas fa-play mr-2"></i> Run Audit
-                    </button>
+            <div class="space-y-6">
+                <div>
+                    <label for="repo-url" class="block text-sm font-medium text-gray-300 mb-2">GitHub Repository URL</label>
+                    <input type="text" id="repo-url" class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="https://github.com/owner/repo">
                 </div>
+                <div>
+                    <label for="strategic-goal" class="block text-sm font-medium text-gray-300 mb-2">Strategic Goal</label>
+                    <input type="text" id="strategic-goal" class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="e.g., 'Find and fix all critical vulnerabilities'">
+                </div>
+                <!-- NEW: Dedicated input for GitHub Token -->
+                <div>
+                    <label for="github-token" class="block text-sm font-medium text-gray-300 mb-2">
+                        GitHub Personal Access Token
+                        <a href="https://github.com/settings/tokens?type=beta" target="_blank" class="text-blue-400 hover:underline text-xs ml-2">(Create one)</a>
+                    </label>
+                    <input type="password" id="github-token" class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="ghp_... (requires 'repo' scope)">
+                </div>
+            </div>
 
-                <div id="results-container" class="mt-10 hidden">
-                    <h2 class="text-2xl font-bold mb-4 text-center">Audit in Progress...</h2>
-                    <div id="status-list" class="space-y-3 p-4 bg-gray-700 rounded-lg">
-                        <!-- Status items will be injected here -->
-                    </div>
-                    <div id="final-result" class="mt-6 text-center hidden p-4 bg-green-900 border border-green-700 rounded-lg">
-                        <p class="font-semibold">Audit Complete! A secure version of the repository is available at:</p>
-                        <a href="#" id="final-repo-link" target="_blank" class="text-blue-400 hover:underline break-all"></a>
-                    </div>
-                     <div id="error-message" class="mt-6 text-center hidden p-4 bg-red-900 border border-red-700 rounded-lg">
-                        <p class="font-semibold">An error occurred during the audit:</p>
-                        <p id="error-details" class="text-red-300"></p>
-                    </div>
+            <button id="run-audit-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg mt-8 transition-colors duration-300 flex items-center justify-center">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                Run Audit
+            </button>
+
+            <div id="results-container" class="mt-8 hidden">
+                <h2 class="text-xl font-semibold mb-4 text-center">Audit in Progress...</h2>
+                <div id="status-list" class="space-y-3"></div>
+                <div id="final-result" class="mt-6 hidden">
+                    <h3 class="text-lg font-semibold text-green-400">Audit Complete!</h3>
+                    <p>Final Pull Request URL:</p>
+                    <a id="final-repo-link" href="#" target="_blank" class="text-blue-400 hover:underline break-all"></a>
                 </div>
-            </main>
+                <div id="error-message" class="mt-6 hidden p-4 bg-red-900/50 border border-red-700 rounded-lg">
+                    <h3 class="font-bold text-red-300">An error occurred during the audit:</h3>
+                    <p id="error-details" class="text-red-400 font-mono text-sm mt-2"></p>
+                </div>
+            </div>
         </div>
     </div>
 
-    <script>
-        // --- CONFIGURATION ---
-        // PASTE YOUR NGROK FORWARDING URL HERE
-        const NGROK_BASE_URL = "https://merited-blotchier-linn.ngrok-free.dev"; 
+<script>
+// --- CONFIGURATION ---
+// PASTE YOUR NGROK FORWARDING URL HERE
+const NGROK_BASE_URL = "https://merited-blotchier-linn.ngrok-free.dev";
 
-        // --- DOM ELEMENTS ---
-        const runAuditBtn = document.getElementById('run-audit-btn');
-        const repoUrlInput = document.getElementById('repo-url');
-        const strategicGoalInput = document.getElementById('strategic-goal');
-        const resultsContainer = document.getElementById('results-container');
-        const statusList = document.getElementById('status-list');
-        const finalResult = document.getElementById('final-result');
-        const finalRepoLink = document.getElementById('final-repo-link');
-        const errorMessage = document.getElementById('error-message');
-        const errorDetails = document.getElementById('error-details');
+// --- DOM ELEMENTS ---
+const runAuditBtn = document.getElementById('run-audit-btn');
+const repoUrlInput = document.getElementById('repo-url');
+const strategicGoalInput = document.getElementById('strategic-goal');
+const githubTokenInput = document.getElementById('github-token'); // New
+const resultsContainer = document.getElementById('results-container');
+const statusList = document.getElementById('status-list');
+const finalResult = document.getElementById('final-result');
+const finalRepoLink = document.getElementById('final-repo-link');
+const errorMessage = document.getElementById('error-message');
+const errorDetails = document.getElementById('error-details');
+
+// --- UI HELPER FUNCTIONS ---
+const updateStatus = (id, text, state = 'pending', url = '') => {
+    let item = document.getElementById(id);
+    if (!item) {
+        item = document.createElement('div');
+        item.id = id;
+        item.classList.add('status-item', 'pending');
+        statusList.appendChild(item);
+    }
+    
+    let iconHtml = '';
+    if (state === 'pending') {
+        iconHtml = '<div class="spinner mr-3"></div>';
+    } else if (state === 'success') {
+        iconHtml = '<svg class="w-5 h-5 mr-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>';
+    } else { // error
+        iconHtml = '<svg class="w-5 h-5 mr-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path></svg>';
+    }
+
+    let textHtml = `<div>${text}</div>`;
+    if (url) {
+        textHtml += `<a href="${url}" target="_blank" class="ml-2 text-blue-300 hover:underline">[Link]</a>`;
+    }
+    
+    item.innerHTML = `${iconHtml}${textHtml}`;
+    item.className = `status-item ${state}`;
+};
+
+const showError = (message) => {
+    errorDetails.textContent = message;
+    errorMessage.classList.remove('hidden');
+    runAuditBtn.disabled = false;
+    runAuditBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+};
 
 
-        // --- UI HELPER FUNCTIONS ---
-        const updateStatus = (id, text, state = 'pending') => {
-            let statusItem = document.getElementById(id);
-            if (!statusItem) {
-                statusItem = document.createElement('div');
-                statusItem.id = id;
-                statusItem.className = 'status-item flex items-center p-2 rounded-md';
-                statusList.appendChild(statusItem);
-            }
+// --- MAIN WORKFLOW ---
+const runFullAudit = async () => {
+    // 1. Get inputs and reset UI
+    const repoUrl = repoUrlInput.value.trim();
+    const strategicGoal = strategicGoalInput.value.trim();
+    const githubToken = githubTokenInput.value.trim(); // New
 
-            let iconClass = 'fas fa-hourglass-half';
-            let textColor = 'text-yellow-300';
-            let loader = `<div class="loader mr-3"></div>`;
+    if (!repoUrl || !strategicGoal || !githubToken) { // New
+        alert('Please fill in all fields, including the GitHub Token.');
+        return;
+    }
 
-            if (state === 'completed') {
-                iconClass = 'fas fa-check-circle';
-                textColor = 'text-green-400';
-                loader = `<i class="icon ${iconClass} mr-3"></i>`;
-            } else if (state === 'error') {
-                iconClass = 'fas fa-times-circle';
-                textColor = 'text-red-400';
-                loader = `<i class="icon ${iconClass} mr-3"></i>`;
-            }
+    resultsContainer.classList.remove('hidden');
+    errorMessage.classList.add('hidden');
+    finalResult.classList.add('hidden');
+    statusList.innerHTML = '';
+    runAuditBtn.disabled = true;
+    runAuditBtn.classList.add('opacity-50', 'cursor-not-allowed');
 
-            statusItem.innerHTML = `${loader}<span class="${textColor}">${text}</span>`;
-            statusItem.scrollIntoView({ behavior: 'smooth', block: 'end' });
-        };
-        
-        const showError = (message) => {
-            errorMessage.classList.remove('hidden');
-            errorDetails.innerText = message;
-            resultsContainer.scrollIntoView({ behavior: 'smooth', block: 'end' });
-        }
-
-        const showFinalResult = (link) => {
-            finalResult.classList.remove('hidden');
-            finalRepoLink.href = link;
-            finalRepoLink.textContent = link;
-            resultsContainer.scrollIntoView({ behavior: 'smooth', block: 'end' });
-        };
-        
-        const resetUI = () => {
-            resultsContainer.classList.add('hidden');
-            finalResult.classList.add('hidden');
-            errorMessage.classList.add('hidden');
-            statusList.innerHTML = '';
-            runAuditBtn.disabled = false;
-            runAuditBtn.innerHTML = '<i class="fas fa-play mr-2"></i> Run Audit';
-        }
-
-        // --- CORE LOGIC ---
-        runAuditBtn.addEventListener('click', () => {
-            const repoUrl = repoUrlInput.value;
-            const strategicGoal = strategicGoalInput.value;
-
-            if (!repoUrl || !strategicGoal) {
-                alert('Please provide both a repository URL and a strategic goal.');
-                return;
-            }
-            
-            runAuditBtn.disabled = true;
-            runAuditBtn.innerHTML = '<div class="loader"></div><span class="ml-2">Audit Running...</span>';
-            resultsContainer.classList.remove('hidden');
-            
-            runFullAudit(repoUrl, strategicGoal);
+    try {
+        // --- Agent 1: Security Manager ---
+        const smId = 'sm-status';
+        updateStatus(smId, 'Security Manager: Translating goal to tactical plan...');
+        const tacticalPlanResponse = await fetch(`${NGROK_BASE_URL}/create-tactical-plan`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ repo_url: repoUrl, strategic_goal: strategicGoal })
         });
+        if (!tacticalPlanResponse.ok) throw new Error(`Security Manager failed: ${await tacticalPlanResponse.text()}`);
+        const tacticalPlanData = await tacticalPlanResponse.json();
+        updateStatus(smId, `Security Manager: Tactical plan created.`, 'success');
 
-        async function runFullAudit(repoUrl, strategicGoal) {
-            resetUI();
-            resultsContainer.classList.remove('hidden');
+        // --- Agent 2: Penetration Tester ---
+        const ptId = 'pt-status';
+        updateStatus(ptId, 'Penetration Tester: Analyzing code for vulnerabilities...');
+        const penTestResponse = await fetch(`${NGROK_BASE_URL}/run-pentest`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ repo_url: repoUrl, tactical_plan: tacticalPlanData.tactical_plan })
+        });
+        if (!penTestResponse.ok) throw new Error(`Penetration Tester failed: ${await penTestResponse.text()}`);
+        const penTestData = await penTestResponse.json();
+        updateStatus(ptId, `Penetration Tester: Found ${penTestData.findings.length} vulnerability(s).`, 'success');
 
-            try {
-                // --- MOCK DATA FOR DEMO ---
-                // In a real application, you would fetch the code from the actual repo.
-                const MOCK_VULNERABLE_CODE = `import os\n\n# Configuration for external service\nclass AppConfig:\n    def setup_payment_gateway():\n        # TODO: Move this to a secure vault later\n        stripe_api_key = "sk_live_123abc456def789ghi_VERY_SECRET_KEY"\n        print("Connecting to Stripe...")\n        return stripe_api_key`;
-                
-                // Step 1: Call Security Manager Agent
-                updateStatus('manager', 'Security Manager: Translating goal to tactical plan...');
-                const smResponse = await fetch(`${NGROK_BASE_URL}/create-tactical-plan`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ repo_url: repoUrl, strategic_goal: strategicGoal })
-                });
-                if (!smResponse.ok) throw new Error(`Security Manager failed: ${await smResponse.text()}`);
-                const smData = await smResponse.json();
-                const tacticalPlan = smData.tactical_plan;
-                updateStatus('manager', 'Security Manager: Tactical plan created.', 'completed');
-
-                // Step 2: Call Penetration Tester Agent
-                updateStatus('pentester', 'Penetration Tester: Analyzing code for vulnerabilities...');
-                const ptResponse = await fetch(`${NGROK_BASE_URL}/run-pentest`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        repo_url: repoUrl,
-                        tactical_plan: tacticalPlan,
-                        code_content_for_review: MOCK_VULNERABLE_CODE
-                    })
-                });
-                if (!ptResponse.ok) throw new Error(`Penetration Tester failed: ${await ptResponse.text()}`);
-                const ptData = await ptResponse.json();
-                const findings = ptData.findings;
-                 if (findings.length === 0) {
-                    updateStatus('pentester', 'Penetration Tester: No vulnerabilities found.', 'completed');
-                    showFinalResult(repoUrl); // No changes needed
-                    return;
-                }
-                updateStatus('pentester', `Penetration Tester: Found ${findings.length} vulnerability(s).`, 'completed');
-                
-                // Step 3: Call Security Engineer Agent
-                updateStatus('sec-engineer', 'Security Engineer: Triaging findings and creating tickets...');
-                const seResponse = await fetch(`${NGROK_BASE_URL}/triage-findings`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        repo_url: repoUrl,
-                        findings: findings,
-                        github_token: "ghp_DUMMY_TOKEN_FOR_DEMO"
-                    })
-                });
-                if (!seResponse.ok) throw new Error(`Security Engineer failed: ${await seResponse.text()}`);
-                await seResponse.json();
-                updateStatus('sec-engineer', 'Security Engineer: Simulated GitHub issues created.', 'completed');
-                
-                // Step 4: Call Software Engineer Agent to fix the FIRST vulnerability
-                updateStatus('sw-engineer', 'Software Engineer: Writing code to fix vulnerability...');
-                const fixResponse = await fetch(`${NGROK_BASE_URL}/fix-vulnerability`, {
-                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        vulnerability_finding: findings[0], // We'll fix the first finding for this demo
-                        vulnerable_code: MOCK_VULNERABLE_CODE
-                    })
-                });
-                if (!fixResponse.ok) throw new Error(`Software Engineer failed: ${await fixResponse.text()}`);
-                const fixData = await fixResponse.json();
-                updateStatus('sw-engineer', `Software Engineer: Code fix generated. Commit: "${fixData.commit_message}"`, 'completed');
-
-                // Final Step: Show the "fixed" repository link
-                // In a real app, this would be a link to a new pull request.
-                const fixedRepoUrl = `${repoUrl}/pull/new/ai-security-fix`;
-                showFinalResult(fixedRepoUrl);
-
-            } catch (error) {
-                console.error("Audit failed:", error);
-                updateStatus('error-state', `Error: ${error.message}`, 'error');
-                showError(error.message);
-            } finally {
-                runAuditBtn.disabled = false;
-                 runAuditBtn.innerHTML = '<i class="fas fa-play mr-2"></i> Run Audit';
-            }
+        if (penTestData.findings.length === 0) {
+            finalResult.classList.remove('hidden');
+            finalRepoLink.textContent = "No vulnerabilities found, so no PR was created.";
+            finalRepoLink.removeAttribute('href');
+            return;
         }
-    </script>
+
+        // --- Agent 3: Security Engineer ---
+        const seId = 'se-status';
+        updateStatus(seId, 'Security Engineer: Triaging findings and creating tickets...');
+        const triageResponse = await fetch(`${NGROK_BASE_URL}/triage-findings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ repo_url: repoUrl, findings: penTestData.findings, github_token: githubToken })
+        });
+        if (!triageResponse.ok) throw new Error(`Security Engineer failed: ${await triageResponse.text()}`);
+        const triageData = await triageResponse.json();
+        const firstIssueUrl = triageData.summary.length > 0 ? triageData.summary[0].url : '';
+        updateStatus(seId, `Security Engineer: Created ${triageData.summary.length} GitHub issue(s).`, 'success', firstIssueUrl);
+        
+        // --- Agent 4: Software Engineer ---
+        const sweId = 'swe-status';
+        updateStatus(sweId, 'Software Engineer: Generating code fix for the first vulnerability...');
+        // For the demo, we only fix the first finding
+        const firstFinding = penTestData.findings[0];
+        const fixResponse = await fetch(`${NGROK_BASE_URL}/fix-vulnerability`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ repo_url: repoUrl, vulnerability_finding: firstFinding, github_token: githubToken })
+        });
+        if (!fixResponse.ok) throw new Error(`Software Engineer failed: ${await fixResponse.text()}`);
+        const fixData = await fixResponse.json();
+        updateStatus(sweId, `Software Engineer: Pull request created.`, 'success', fixData.pull_request_url);
+
+        // --- Final Result ---
+        finalResult.classList.remove('hidden');
+        finalRepoLink.href = fixData.pull_request_url;
+        finalRepoLink.textContent = fixData.pull_request_url;
+
+    } catch (error) {
+        console.error('Audit failed:', error);
+        let errorJson = {};
+        try {
+            // Try to parse the error message as JSON
+            errorJson = JSON.parse(error.message.substring(error.message.indexOf('{')));
+        } catch(e) {
+            // Fallback for non-json errors
+            errorJson = { detail: error.message };
+        }
+        
+        // Update the last pending status item to error
+        const pendingItem = document.querySelector('.status-item.pending');
+        if (pendingItem) {
+            const text = pendingItem.textContent || "An unknown step";
+            updateStatus(pendingItem.id, `Error: ${text.replace('...', '')} failed...`, 'error');
+        }
+        showError(errorJson.detail || "An unknown error occurred.");
+    } finally {
+        runAuditBtn.disabled = false;
+        runAuditBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+    }
+};
+
+runAuditBtn.addEventListener('click', runFullAudit);
+</script>
 </body>
 </html>
 
