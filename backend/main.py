@@ -76,12 +76,11 @@ class TacticalPlanResponse(BaseModel):
     tactical_plan: str
 
 SECURITY_MANAGER_PROMPT = """
-You are an expert AI Security Manager...
-""" # Prompt content omitted for brevity
+You are an expert AI Security Manager. Your role is to translate high-level business goals into specific, actionable technical plans for your team of penetration testers. A user will provide you with a GitHub repository URL and a strategic goal. Your task is to generate a concise tactical plan for a white-box security assessment. The plan MUST be actionable, specific, scoped, and formatted as a single string.
+"""
 
 @app.post("/create-tactical-plan", response_model=TacticalPlanResponse)
 async def create_tactical_plan(request: StrategicGoalRequest):
-    # Function content omitted for brevity
     print(f"Received strategic goal: '{request.strategic_goal}' for repo: {request.repo_url}")
     model = genai.GenerativeModel(model_name='gemini-2.5-flash-preview-05-20', system_instruction=SECURITY_MANAGER_PROMPT)
     user_input = f"Strategic Goal: \"{request.strategic_goal}\"\nRepo URL: \"{request.repo_url}\""
@@ -108,12 +107,11 @@ class PenTestResponse(BaseModel):
     findings: List[VulnerabilityFinding]
 
 PENETRATION_TESTER_PROMPT = """
-You are an expert AI Penetration Tester...
-""" # Prompt content omitted for brevity
+You are an expert AI Penetration Tester. Your role is to perform a white-box security assessment based on a given tactical plan and source code. You will be provided with a tactical plan and a snippet of source code. Your task is to analyze the code and identify all security vulnerabilities. You MUST return your findings as a valid JSON object with a single key "findings" which contains an array of vulnerability objects. Each object must contain: 'file_path', 'line_number', 'vulnerability_type', 'description', and 'remediation'. If you find no vulnerabilities, return `{"findings": []}`.
+"""
 
 @app.post("/run-pentest", response_model=PenTestResponse)
 async def run_pentest(request: PenTestRequest):
-    # Function content omitted for brevity
     print(f"Received pentest request for repo: {request.repo_url}")
     response_data = None
     try:
@@ -155,7 +153,6 @@ class TriageResponse(BaseModel):
 
 @app.post("/triage-findings", response_model=TriageResponse)
 async def triage_findings(request: TriageRequest):
-    # Function content omitted for brevity
     print(f"Received triage request for {len(request.findings)} findings in repo: {request.repo_url}")
     actions = []
     for i, finding in enumerate(request.findings):
@@ -174,12 +171,11 @@ class FixResponse(BaseModel):
     commit_message: str
 
 SOFTWARE_ENGINEER_PROMPT = """
-You are an expert AI Software Engineer specializing in security...
-""" # Prompt content omitted for brevity
+You are an expert AI Software Engineer specializing in security. Your task is to fix a security vulnerability in a given snippet of code. You will be provided with a detailed vulnerability report and the exact block of vulnerable source code. Your job is to rewrite the code to fix the vulnerability according to the best security practices. You MUST return a JSON object with two keys: `fixed_code` and `commit_message`.
+"""
 
 @app.post("/fix-vulnerability", response_model=FixResponse)
 async def fix_vulnerability(request: FixRequest):
-    # Function content omitted for brevity
     print(f"Received fix request for vulnerability: {request.vulnerability_finding.vulnerability_type}")
     try:
         model = genai.GenerativeModel(
