@@ -285,8 +285,11 @@ runAuditBtn.addEventListener('click', runFullAudit);
   const userEmail = document.getElementById('user-email');
 
   async function configureClient() {
-    // Check if Auth0 credentials are still using placeholder values
-    if (AUTH0_DOMAIN === "dev-abc123.us.auth0.com" || AUTH0_CLIENT_ID === "YOUR_AUTH0_CLIENT_ID") {
+    // Check if Auth0 credentials appear to be placeholders or are missing
+    const domainLooksPlaceholder = !AUTH0_DOMAIN || AUTH0_DOMAIN.includes('abc123') || AUTH0_DOMAIN.includes('example');
+    const clientIdLooksPlaceholder = !AUTH0_CLIENT_ID || AUTH0_CLIENT_ID.startsWith('YOUR') || AUTH0_CLIENT_ID.includes('default');
+
+    if (domainLooksPlaceholder || clientIdLooksPlaceholder) {
       console.warn("Auth0 not configured. Please update AUTH0_DOMAIN and AUTH0_CLIENT_ID in the configuration section.");
       // Show configuration message
       document.getElementById('auth-container').innerHTML = `
@@ -305,18 +308,21 @@ runAuditBtn.addEventListener('click', runFullAudit);
     }
 
     try {
+      // Use the exact callback path that matches your Auth0 application settings
+      const callbackUrl = window.location.origin + '/Alfred/';
+
       auth0 = await createAuth0Client({
         domain: AUTH0_DOMAIN,
         clientId: AUTH0_CLIENT_ID,
         authorizationParams: {
-          redirect_uri: window.location.origin
+          redirect_uri: callbackUrl
         },
         cacheLocation: 'localstorage'
       });
     } catch (error) {
-      console.error("Error configuring Auth0:", error);
+      console.error("Error configuring Auth0:", error, error && error.message);
       document.getElementById('auth-container').innerHTML = 
-        '<div class="text-red-400 text-sm">Auth0 configuration error. Please check your credentials.</div>';
+        `<div class="text-red-400 text-sm">Auth0 configuration error. Please check your credentials.<br/><small>${(error && error.message) || ''}</small></div>`;
     }
   }
 
@@ -378,7 +384,7 @@ runAuditBtn.addEventListener('click', runFullAudit);
       loginBtn.addEventListener('click', () => auth0.loginWithRedirect());
       logoutBtn.addEventListener('click', () => auth0.logout({ 
         logoutParams: {
-          returnTo: window.location.origin 
+          returnTo: window.location.origin + '/Alfred/'
         }
       }));
     }
