@@ -1,4 +1,20 @@
 <!DOCTYPE html>
+<!--
+AUTH0 SETUP INSTRUCTIONS:
+1. Create an Auth0 account at https://auth0.com
+2. Create a new Single Page Application
+3. In your Auth0 dashboard:
+   - Go to Applications > Your App > Settings
+   - Copy the Domain and Client ID
+   - Update the AUTH0_DOMAIN and AUTH0_CLIENT_ID constants in the configuration section below
+   - Add your website URL to "Allowed Callback URLs", "Allowed Logout URLs", and "Allowed Web Origins"
+4. Save the Auth0 application settings
+-->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI-Powered Security Audit</title></head>YPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -66,10 +82,11 @@
                 Run Audit
             </button>
 
-            <div id="auth-container" class="mb-4">
-                <button id="btn-login" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Log In</button>
+            <div id="auth-container" class="mb-6 p-4 bg-gray-700 rounded-lg">
+                <h3 class="text-lg font-semibold mb-3">Authentication</h3>
+                <button id="btn-login" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mr-2">Log In</button>
                 <button id="btn-logout" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded hidden">Log Out</button>
-                <div id="user-profile" class="mt-2 text-gray-300 hidden">
+                <div id="user-profile" class="mt-3 text-gray-300 hidden">
                     <p id="user-name" class="font-semibold"></p>
                     <p id="user-email" class="text-sm"></p>
                 </div>
@@ -95,6 +112,10 @@
 // --- CONFIGURATION ---
 // PASTE YOUR NGROK FORWARDING URL HERE
 const NGROK_BASE_URL = "https://merited-blotchier-linn.ngrok-free.dev";
+
+// AUTH0 CONFIGURATION - Update these values with your Auth0 settings
+const AUTH0_DOMAIN = "dev-abc123.us.auth0.com";     // Replace with your Auth0 domain
+const AUTH0_CLIENT_ID = "YOUR_AUTH0_CLIENT_ID";     // Replace with your Auth0 client ID
 
 // --- DOM ELEMENTS ---
 const runAuditBtn = document.getElementById('run-audit-btn');
@@ -256,6 +277,7 @@ runAuditBtn.addEventListener('click', runFullAudit);
 <script>
   let auth0 = null;
 
+  // Get DOM elements
   const loginBtn = document.getElementById('btn-login');
   const logoutBtn = document.getElementById('btn-logout');
   const userProfile = document.getElementById('user-profile');
@@ -263,40 +285,85 @@ runAuditBtn.addEventListener('click', runFullAudit);
   const userEmail = document.getElementById('user-email');
 
   async function configureClient() {
-    auth0 = await createAuth0Client({
-      domain: 'YOUR_AUTH0_DOMAIN',          // e.g., dev-abc123.us.auth0.com
-      client_id: 'YOUR_AUTH0_CLIENT_ID',   // e.g., abc123XYZ
-      authorizationParams: {
-        redirect_uri: window.location.origin + '/Alfred/'
-      },
-      cacheLocation: 'localstorage' // important for GitHub Pages
-    });
+    // Check if Auth0 credentials are configured
+    if (AUTH0_DOMAIN === "dev-abc123.us.auth0.com" || AUTH0_CLIENT_ID === "YOUR_AUTH0_CLIENT_ID") {
+      console.warn("Auth0 not configured. Please update AUTH0_DOMAIN and AUTH0_CLIENT_ID in the configuration section.");
+      // Show configuration message
+      document.getElementById('auth-container').innerHTML = `
+        <h3 class="text-lg font-semibold mb-3">Authentication</h3>
+        <div class="text-yellow-400 text-sm">
+          <p class="mb-2">⚠️ Auth0 not configured</p>
+          <p>To enable authentication, please:</p>
+          <ol class="list-decimal list-inside mt-2 space-y-1">
+            <li>Create an Auth0 account</li>
+            <li>Update AUTH0_DOMAIN and AUTH0_CLIENT_ID in the code</li>
+            <li>Configure callback URLs in your Auth0 dashboard</li>
+          </ol>
+        </div>
+      `;
+      return;
+    }
+
+    try {
+      auth0 = await createAuth0Client({
+        domain: AUTH0_DOMAIN,
+        clientId: AUTH0_CLIENT_ID,
+        authorizationParams: {
+          redirect_uri: window.location.origin
+        },
+        cacheLocation: 'localstorage'
+      });
+    } catch (error) {
+      console.error("Error configuring Auth0:", error);
+      document.getElementById('auth-container').innerHTML = 
+        '<div class="text-red-400 text-sm">Auth0 configuration error. Please check your credentials.</div>';
+    }
   }
 
   async function updateUI() {
-    const isAuthenticated = await auth0.isAuthenticated();
+    // Skip UI update if Auth0 is not configured
+    if (!auth0) {
+      return;
+    }
 
-    if (isAuthenticated) {
-      loginBtn.classList.add('hidden');
-      logoutBtn.classList.remove('hidden');
-      userProfile.classList.remove('hidden');
+    try {
+      const isAuthenticated = await auth0.isAuthenticated();
 
-      const user = await auth0.getUser();
-      userName.textContent = user.name || '';
-      userEmail.textContent = user.email || '';
-    } else {
-      loginBtn.classList.remove('hidden');
-      logoutBtn.classList.add('hidden');
-      userProfile.classList.add('hidden');
-      userName.textContent = '';
-      userEmail.textContent = '';
+      if (isAuthenticated) {
+        loginBtn.classList.add('hidden');
+        logoutBtn.classList.remove('hidden');
+        userProfile.classList.remove('hidden');
+
+        const user = await auth0.getUser();
+        userName.textContent = user.name || '';
+        userEmail.textContent = user.email || '';
+      } else {
+        loginBtn.classList.remove('hidden');
+        logoutBtn.classList.add('hidden');
+        userProfile.classList.add('hidden');
+        userName.textContent = '';
+        userEmail.textContent = '';
+      }
+    } catch (error) {
+      console.error("Error updating UI:", error);
     }
   }
 
   async function handleRedirectCallback() {
-    const query = window.location.search;
-    if (query.includes('code=') && query.includes('state=')) {
-      await auth0.handleRedirectCallback();
+    // Skip callback handling if Auth0 is not configured
+    if (!auth0) {
+      return;
+    }
+
+    try {
+      const query = window.location.search;
+      if (query.includes('code=') && query.includes('state=')) {
+        await auth0.handleRedirectCallback();
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    } catch (error) {
+      console.error("Error handling redirect callback:", error);
+      // Clear the URL parameters on error to prevent infinite loops
       window.history.replaceState({}, document.title, window.location.pathname);
     }
   }
@@ -306,8 +373,15 @@ runAuditBtn.addEventListener('click', runFullAudit);
     await handleRedirectCallback();
     await updateUI();
 
-    loginBtn.addEventListener('click', () => auth0.loginWithRedirect());
-    logoutBtn.addEventListener('click', () => auth0.logout({ returnTo: window.location.origin + '/Alfred/' }));
+    // Add event listeners only if Auth0 is configured
+    if (auth0) {
+      loginBtn.addEventListener('click', () => auth0.loginWithRedirect());
+      logoutBtn.addEventListener('click', () => auth0.logout({ 
+        logoutParams: {
+          returnTo: window.location.origin 
+        }
+      }));
+    }
   };
 </script>
 
