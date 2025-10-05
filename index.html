@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI-Powered Security Audit</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .status-dot {
+            height: 12px;
+            width: 12px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .pending { background-color: #f59e0b; }
+        .running { background-color: #3b82f6; }
+        .completed { background-color: #22c55e; }
+        .failed { background-color: #ef4444; }
+    </style>
+</head>
+<body class="bg-gray-900 text-white">
+
+    <div class="container mx-auto p-8">
+        <header class="text-center mb-12">
+            <h1 class="text-5xl font-bold mb-2">AI-Powered Security Audit</h1>
+            <p class="text-lg text-gray-400">Delegate a security audit to a team of specialized AI agents.</p>
+        </header>
+
+        <main>
+            <div class="bg-gray-800 p-8 rounded-xl shadow-2xl max-w-3xl mx-auto">
+                <form id="auditForm">
+                    <div class="mb-6">
+                        <label for="repoUrl" class="block text-sm font-medium text-gray-300 mb-2">GitHub Repository URL</label>
+                        <input type="url" id="repoUrl" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" placeholder="https://github.com/user/repo" required>
+                    </div>
+                    <div class="mb-6">
+                        <label for="strategicGoal" class="block text-sm font-medium text-gray-300 mb-2">Strategic Goal</label>
+                        <textarea id="strategicGoal" rows="3" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" placeholder="e.g., Ensure this API is safe from data breaches before our Q4 launch." required></textarea>
+                    </div>
+                    <button type="submit" id="submitBtn" class="w-full bg-blue-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:bg-blue-700 transition-colors duration-300 disabled:bg-gray-500 disabled:cursor-not-allowed">
+                        Start Audit
+                    </button>
+                </form>
+            </div>
+
+            <div id="progress" class="hidden mt-12 max-w-3xl mx-auto">
+                <h2 class="text-3xl font-bold text-center mb-8">Audit in Progress...</h2>
+                <div class="bg-gray-800 p-8 rounded-xl shadow-2xl space-y-6">
+                    <!-- Agent Statuses will be injected here -->
+                </div>
+            </div>
+
+             <div id="results" class="hidden mt-12 max-w-3xl mx-auto text-center">
+                <h2 class="text-3xl font-bold text-green-400 mb-4">Audit Complete!</h2>
+                <p class="text-gray-400 mb-6">The repository has been analyzed, patched, and is ready for review.</p>
+                <div class="bg-gray-800 p-8 rounded-xl shadow-2xl">
+                    <label class="block text-sm font-medium text-gray-300 mb-2">Updated Repository Link</label>
+                    <a id="resultLink" href="#" target="_blank" rel="noopener noreferrer" class="text-blue-400 text-lg hover:underline break-all"></a>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const auditForm = document.getElementById('auditForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const progressContainer = document.getElementById('progress');
+        const resultsContainer = document.getElementById('results');
+        const resultLink = document.getElementById('resultLink');
+
+        const agents = [
+            { id: 'manager', name: 'Security Manager Agent', role: 'Translating Goal to Plan' },
+            { id: 'tester', name: 'Penetration Tester Agent', role: 'Analyzing Repository Code' },
+            { id: 'sec_engineer', name: 'Security Engineer Agent', role: 'Creating Issues & Automation' },
+            { id: 'soft_engineer', name: 'Software Engineer Agent', role: 'Fixing Vulnerabilities' }
+        ];
+
+        // --- Mock Agent Functions ---
+        // In a real application, these would make API calls to your agents.
+        // They are simulated here with timeouts to show the workflow.
+
+        const runSecurityManager = (goal) => new Promise((resolve) => {
+            console.log(`[Manager] Received goal: "${goal}"`);
+            updateAgentStatus('manager', 'running', 'Translating goal into a tactical plan...');
+            setTimeout(() => {
+                const plan = `Tactical Plan: Perform a full SAST and SCA scan on the repository. Focus on injection flaws and insecure dependencies. Priority: Critical.`;
+                console.log(`[Manager] Produced plan: "${plan}"`);
+                updateAgentStatus('manager', 'completed', 'Tactical plan created.');
+                resolve(plan);
+            }, 3000);
+        });
+
+        const runPenTester = (plan, repo) => new Promise((resolve) => {
+            console.log(`[Tester] Received plan: "${plan}" for repo: ${repo}`);
+            updateAgentStatus('tester', 'running', 'Scanning code for vulnerabilities...');
+            setTimeout(() => {
+                const report = `Vulnerability Report:
+1. Critical: SQL Injection found in 'src/db.js' at line 42.
+2. High: Outdated dependency 'left-pad' version 1.1.0 found in 'package.json'.`;
+                console.log(`[Tester] Produced report.`);
+                updateAgentStatus('tester', 'completed', 'Vulnerability report generated.');
+                resolve(report);
+            }, 5000);
+        });
+
+        const runSecurityEngineer = (report, repo) => new Promise((resolve) => {
+            console.log(`[Sec Engineer] Received report for repo: ${repo}`);
+            updateAgentStatus('sec_engineer', 'running', 'Creating GitHub issues and CI/CD workflows...');
+            setTimeout(() => {
+                const actions = `Actions Taken:
+1. Created GitHub Issue #1: "Fix SQL Injection in src/db.js".
+2. Created GitHub Issue #2: "Update vulnerable dependency 'left-pad'".
+3. Added '.github/workflows/security-scan.yml' to the repo.`;
+                console.log(`[Sec Engineer] Performed actions.`);
+                updateAgentStatus('sec_engineer', 'completed', 'Issues and automation created.');
+                resolve(actions);
+            }, 4000);
+        });
+
+        const runSoftwareEngineer = (actions, repo) => new Promise((resolve) => {
+            console.log(`[Soft Engineer] Received actions for repo: ${repo}`);
+            updateAgentStatus('soft_engineer', 'running', 'Writing code to patch vulnerabilities...');
+            setTimeout(() => {
+                const updatedRepo = repo.replace('.git', '-patched.git');
+                console.log(`[Soft Engineer] Patched repo is at: ${updatedRepo}`);
+                updateAgentStatus('soft_engineer', 'completed', 'Code patched and pull requests created.');
+                resolve(updatedRepo);
+            }, 6000);
+        });
+
+
+        const updateAgentStatus = (agentId, status, message) => {
+            const agentElement = document.getElementById(`agent-${agentId}`);
+            if (!agentElement) return;
+
+            const dot = agentElement.querySelector('.status-dot');
+            const statusText = agentElement.querySelector('.status-text');
+
+            dot.className = `status-dot ${status}`;
+            statusText.textContent = message;
+        };
+
+        const initializeProgressUI = () => {
+            const container = progressContainer.querySelector('.space-y-6');
+            container.innerHTML = '';
+            agents.forEach(agent => {
+                const element = document.createElement('div');
+                element.id = `agent-${agent.id}`;
+                element.className = 'flex items-center justify-between bg-gray-700 p-4 rounded-lg';
+                element.innerHTML = `
+                    <div>
+                        <h3 class="font-semibold">${agent.name}</h3>
+                        <p class="text-sm text-gray-400 status-text">Pending...</p>
+                    </div>
+                    <span class="status-dot pending"></span>
+                `;
+                container.appendChild(element);
+            });
+        };
+
+        auditForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const repoUrl = document.getElementById('repoUrl').value;
+            const strategicGoal = document.getElementById('strategicGoal').value;
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Audit in Progress...';
+            resultsContainer.classList.add('hidden');
+            progressContainer.classList.remove('hidden');
+            initializeProgressUI();
+
+            // --- Orchestration Logic ---
+            const copiedRepoUrl = repoUrl; // In reality, you'd copy the repo here.
+
+            const tacticalPlan = await runSecurityManager(strategicGoal);
+            const vulnerabilityReport = await runPenTester(tacticalPlan, copiedRepoUrl);
+            const engineerActions = await runSecurityEngineer(vulnerabilityReport, copiedRepoUrl);
+            const finalRepoLink = await runSoftwareEngineer(engineerActions, copiedRepoUrl);
+
+            // --- Display Results ---
+            progressContainer.classList.add('hidden');
+            resultsContainer.classList.remove('hidden');
+            resultLink.href = finalRepoLink;
+            resultLink.textContent = finalRepoLink;
+            
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Start New Audit';
+        });
+
+    </script>
+</body>
+</html>
+
