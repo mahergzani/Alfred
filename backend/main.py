@@ -52,19 +52,20 @@ app.add_middleware(
 
 @app.options("/create-tactical-plan")
 async def options_create_tactical_plan():
-    return Response(status_code=204)
+    return Response(status_code=204, headers={"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type"})
 
 @app.options("/run-pentest")
 async def options_run_pentest():
-    return Response(status_code=204)
+    return Response(status_code=204, headers={"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type"})
 
 @app.options("/triage-findings")
 async def options_triage_findings():
-    return Response(status_code=204)
+    return Response(status_code=204, headers={"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type"})
 
 @app.options("/fix-vulnerability")
 async def options_fix_vulnerability():
-    return Response(status_code=204)
+    return Response(status_code=204, headers={"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type"})
+
 
 # --- Agent 1: Security Manager ---
 
