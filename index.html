@@ -81,15 +81,19 @@ AUTH0 SETUP INSTRUCTIONS:
                 Run Audit
             </button>
 
-            <div id="auth-container" class="mb-6 p-4 bg-gray-700 rounded-lg">
-                <h3 class="text-lg font-semibold mb-3">Authentication</h3>
-                <button id="btn-login" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mr-2">Log In</button>
-                <button id="btn-logout" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded hidden">Log Out</button>
-                <div id="user-profile" class="mt-3 text-gray-300 hidden">
-                    <p id="user-name" class="font-semibold"></p>
-                    <p id="user-email" class="text-sm"></p>
-                </div>
-            </div>
+      <div id="auth-container" class="mb-6 p-4 bg-gray-700 rounded-lg">
+        <h3 class="text-lg font-semibold mb-3">Authentication</h3>
+        <div class="flex items-center space-x-2">
+          <button id="btn-login" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Log In</button>
+          <button id="btn-logout" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded hidden">Log Out</button>
+          <button id="btn-debug" class="bg-gray-600 hover:bg-gray-500 text-white font-mono text-xs py-2 px-3 rounded">Debug Auth</button>
+        </div>
+        <div id="user-profile" class="mt-3 text-gray-300 hidden">
+          <p id="user-name" class="font-semibold"></p>
+          <p id="user-email" class="text-sm"></p>
+        </div>
+        <pre id="auth-debug" class="mt-3 p-3 bg-gray-900 text-xs text-gray-200 rounded hidden" style="white-space:pre-wrap; max-height:220px; overflow:auto;"></pre>
+      </div>
 
             <div id="results-container" class="mt-8 hidden">
                 <h2 class="text-xl font-semibold mb-4 text-center">Audit in Progress...</h2>
@@ -282,6 +286,8 @@ runAuditBtn.addEventListener('click', runFullAudit);
   const userProfile = document.getElementById('user-profile');
   const userName = document.getElementById('user-name');
   const userEmail = document.getElementById('user-email');
+  const debugBtn = document.getElementById('btn-debug');
+  const authDebug = document.getElementById('auth-debug');
 
   async function configureClient() {
     // Check if Auth0 credentials appear to be placeholders or are missing
@@ -397,15 +403,27 @@ runAuditBtn.addEventListener('click', runFullAudit);
     await handleRedirectCallback();
     await updateUI();
 
-    // Add event listeners only if Auth0 is configured
-    if (auth0) {
-      loginBtn.addEventListener('click', () => auth0.loginWithRedirect());
-      logoutBtn.addEventListener('click', () => auth0.logout({ 
-        logoutParams: {
-          returnTo: window.location.origin + '/Alfred/'
-        }
-      }));
-    }
+    // Add event listeners
+    loginBtn.addEventListener('click', () => auth0 ? auth0.loginWithRedirect() : alert('Auth0 not available'));
+    logoutBtn.addEventListener('click', () => auth0 ? auth0.logout({ 
+      logoutParams: { returnTo: window.location.origin + '/Alfred/' }
+    }) : alert('Auth0 not available'));
+
+    // Debug button prints runtime Auth0 state
+    debugBtn.addEventListener('click', () => {
+      const callbackUrl = window.location.origin + '/Alfred/';
+      const sdkPresent = typeof createAuth0Client === 'function';
+      const clientPresent = !!auth0;
+      const info = {
+        AUTH0_DOMAIN,
+        AUTH0_CLIENT_ID,
+        callbackUrl,
+        sdkPresent,
+        clientPresent
+      };
+      authDebug.textContent = JSON.stringify(info, null, 2);
+      authDebug.classList.remove('hidden');
+    });
   };
 </script>
 
