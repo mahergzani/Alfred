@@ -1,12 +1,13 @@
 <!DOCTYPE html>
 <!--
 AUTH0 SETUP INSTRUCTIONS:
-1. Create an Auth0 account at https://auth0.com
+1. Create an Auth0 account at https://auth0.com if you don't have one.
 2. Create a new Single Page Application
 3. In your Auth0 dashboard:
    - Go to Applications > Your App > Settings
    - Copy the Domain and Client ID
-   - Update the AUTH0_DOMAIN and AUTH0_CLIENT_ID constants in the configuration section below
+   - Configure the `AUTH0_DOMAIN` and `AUTH0_CLIENT_ID`. These should be securely injected (e.g., from environment variables)
+     during your build or deployment process, NOT hardcoded in this file.
    - Add your website URL to "Allowed Callback URLs", "Allowed Logout URLs", and "Allowed Web Origins"
 4. Save the Auth0 application settings
 -->
@@ -112,11 +113,14 @@ AUTH0 SETUP INSTRUCTIONS:
 <script>
 // --- CONFIGURATION ---
 // PASTE YOUR NGROK FORWARDING URL HERE
+// This should also ideally be loaded dynamically, but for a local dev setup, hardcoding for NGROK is common.
 const NGROK_BASE_URL = "https://merited-blotchier-linn.ngrok-free.dev";
 
-// AUTH0 CONFIGURATION - Update these values with your Auth0 settings
-const AUTH0_DOMAIN = "dev-8ze44su0txf6dzg3.us.auth0.com";     // Your Auth0 domain
-const AUTH0_CLIENT_ID = "Yqm5ldoxqE1GtBh5Bc3YBqen1oMs1v2p";     // Your Auth0 client ID
+// AUTH0 CONFIGURATION - IMPORTANT: These values MUST NOT be hardcoded in source control.
+// They should be securely injected (e.g., from environment variables, a build process, or a secure configuration service)
+// Replace these placeholders with your actual Auth0 domain and client ID for your deployment.
+const AUTH0_DOMAIN = "YOUR_AUTH0_DOMAIN_HERE";     // Your Auth0 domain (e.g., 'your-tenant.us.auth0.com')
+const AUTH0_CLIENT_ID = "YOUR_AUTH0_CLIENT_ID_HERE"; // Your Auth0 client ID (e.g., 'xxxxxxxxxxxxxxxxxxxxxxxxx')
 
 // --- DOM ELEMENTS ---
 const runAuditBtn = document.getElementById('run-audit-btn');
@@ -288,8 +292,8 @@ runAuditBtn.addEventListener('click', runFullAudit);
 
   async function configureClient() {
     // Check if Auth0 credentials appear to be placeholders or are missing
-    const domainLooksPlaceholder = !AUTH0_DOMAIN || AUTH0_DOMAIN.includes('abc123') || AUTH0_DOMAIN.includes('example');
-    const clientIdLooksPlaceholder = !AUTH0_CLIENT_ID || AUTH0_CLIENT_ID.startsWith('YOUR') || AUTH0_CLIENT_ID.includes('default');
+    const domainLooksPlaceholder = !AUTH0_DOMAIN || AUTH0_DOMAIN.includes('abc123') || AUTH0_DOMAIN.includes('example') || AUTH0_DOMAIN.includes('YOUR_AUTH0_DOMAIN_HERE');
+    const clientIdLooksPlaceholder = !AUTH0_CLIENT_ID || AUTH0_CLIENT_ID.startsWith('YOUR') || AUTH0_CLIENT_ID.includes('default') || AUTH0_CLIENT_ID.includes('YOUR_AUTH0_CLIENT_ID_HERE');
 
     if (domainLooksPlaceholder || clientIdLooksPlaceholder) {
       console.warn("Auth0 not configured. Please update AUTH0_DOMAIN and AUTH0_CLIENT_ID in the configuration section.");
@@ -301,7 +305,7 @@ runAuditBtn.addEventListener('click', runFullAudit);
           <p>To enable authentication, please:</p>
           <ol class="list-decimal list-inside mt-2 space-y-1">
             <li>Create an Auth0 account</li>
-            <li>Update AUTH0_DOMAIN and AUTH0_CLIENT_ID in the code</li>
+            <li>Securely configure AUTH0_DOMAIN and AUTH0_CLIENT_ID (e.g., via environment variables in a build process)</li>
             <li>Configure callback URLs in your Auth0 dashboard</li>
           </ol>
         </div>
@@ -426,4 +430,3 @@ runAuditBtn.addEventListener('click', runFullAudit);
 
 </body>
 </html>
-
