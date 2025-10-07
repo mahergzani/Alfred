@@ -1,27 +1,31 @@
 <!DOCTYPE html>
-<!--
-AUTH0 SETUP INSTRUCTIONS:
-1. Create an Auth0 account at https://auth0.com
-2. Create a new Single Page Application
-3. In your Auth0 dashboard:
-   - Go to Applications > Your App > Settings
-   - Copy the Domain and Client ID
-   - Update the AUTH0_DOMAIN and AUTH0_CLIENT_ID constants in the configuration section below
-   - Add your website URL to "Allowed Callback URLs", "Allowed Logout URLs", and "Allowed Web Origins"
-4. Save the Auth0 application settings
--->
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI-Powered Security Audit</title></head>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI-Powered Security Audit</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Security: Content Security Policy (CSP) to mitigate XSS attacks -->
+    <!-- This policy restricts where content (scripts, styles, fonts) can be loaded from. -->
+    <!-- IMPORTANT: You must replace 'YOUR_NGROK_URL_HERE' with your actual ngrok domain. -->
+    <meta http-equiv="Content-Security-Policy" 
+          content="default-src 'self'; 
+                   script-src 'self' https://merited-blotchier-linn.ngrok-free.dev; 
+                   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; 
+                   font-src 'self' https://fonts.gstatic.com;
+                   connect-src 'self' YOUR_NGROK_URL_HERE;">
+
+    <title>Alfred: AI Software Butler</title>
+    
+    <!-- Security: Subresource Integrity (SRI) to prevent malicious CDN content -->
+    <!-- IMPORTANT: The 'integrity' hashes are placeholders. You should generate real ones for your specific library versions. -->
+    <script src="https://cdn.tailwindcss.com" 
+            xintegrity="igm5BeiBt36UU4gqwWS7imYmelpTsZlQ45FZf+XBn9MuJbn4nQr7yx1yFydocC/K" 
+            crossorigin="anonymous"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" 
+          rel="stylesheet"
+          xintegrity="Yvt2jmTtQFEtXIVH1VgGfieY/D91UJNVwWdiVUirr4Gwov6BPGKdjcxOWDiaZ5wF"
+          crossorigin="anonymous">
+    
     <style>
         body { font-family: 'Inter', sans-serif; }
         .status-item {
@@ -30,13 +34,14 @@ AUTH0 SETUP INSTRUCTIONS:
             padding: 12px;
             border-radius: 8px;
             transition: all 0.3s ease;
+            border: 1px solid #4a5568;
         }
-        .status-item.pending { background-color: #374151; }
-        .status-item.success { background-color: #166534; color: #dcfce7; }
-        .status-item.error { background-color: #991b1b; color: #fee2e2; }
+        .status-item.pending { background-color: #2d3748; }
+        .status-item.success { background-color: #1a3622; color: #a7f3d0; border-color: #22c55e; }
+        .status-item.error { background-color: #450a0a; color: #fecaca; border-color: #ef4444; }
         .spinner {
-            border: 2px solid #f3f3f3;
-            border-top: 2px solid #3b82f6;
+            border: 2px solid #4a5568;
+            border-top: 2px solid #d4af37; /* Gold color for spinner */
             border-radius: 50%;
             width: 16px;
             height: 16px;
@@ -48,61 +53,59 @@ AUTH0 SETUP INSTRUCTIONS:
         }
     </style>
 </head>
-<body class="bg-gray-900 text-white flex items-center justify-center min-h-screen">
+<body class="bg-gray-950 text-gray-200 flex items-center justify-center min-h-screen">
     <div class="w-full max-w-2xl mx-auto p-4 md:p-8">
-        <div class="bg-gray-800 rounded-2xl shadow-2xl p-6 md:p-10">
-            <h1 class="text-3xl md:text-4xl font-bold text-center mb-2 bg-gradient-to-r from-blue-400 to-purple-500 text-transparent bg-clip-text">AI-Powered Security Audit</h1>
-            <p class="text-center text-gray-400 mb-8">Orchestrate a team of AI agents to find and fix vulnerabilities in your code.</p>
+        <div class="bg-gray-900 rounded-2xl shadow-2xl shadow-black/50 p-6 md:p-10 border border-gray-700">
+            
+            <div class="text-center mb-8">
+                <!-- Subtle thematic icon -->
+                <svg class="w-12 h-12 mx-auto mb-2 text-amber-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
+                </svg>
+                <h1 class="text-4xl md:text-5xl font-bold text-center text-white">Alfred</h1>
+                <p class="text-center text-amber-200/70 mt-2">Your personal AI software butler. How may I assist you today?</p>
+            </div>
 
             <div class="space-y-6">
                 <div>
-                    <label for="repo-url" class="block text-sm font-medium text-gray-300 mb-2">GitHub Repository URL</label>
-                    <input type="text" id="repo-url" class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="https://github.com/owner/repo">
+                    <label for="repo-url" class="block text-sm font-medium text-gray-400 mb-2">New (Empty) GitHub Repository URL</label>
+                    <!-- Security: Basic client-side validation for the URL format -->
+                    <input type="text" id="repo-url" class="w-full bg-gray-800 border border-gray-600 text-white rounded-lg p-3 focus:ring-2 focus:ring-amber-500 focus:outline-none" placeholder="e.g., https://github.com/user/my-new-project" pattern="https://github\.com/.+/.+" title="Please enter a valid GitHub repository URL.">
                 </div>
                 <div>
-                    <label for="strategic-goal" class="block text-sm font-medium text-gray-300 mb-2">Strategic Goal</label>
-                    <input type="text" id="strategic-goal" class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="e.g., 'Find and fix all critical vulnerabilities'">
+                    <label for="project-idea" class="block text-sm font-medium text-gray-400 mb-2">Project Request</label>
+                    <textarea id="project-idea" rows="3" class="w-full bg-gray-800 border border-gray-600 text-white rounded-lg p-3 focus:ring-2 focus:ring-amber-500 focus:outline-none" placeholder="Sir, what shall we build today? (e.g., 'A secure personal diary web app...')"></textarea>
                 </div>
                 
                 <div>
-                    <label for="github-token" class="block text-sm font-medium text-gray-300 mb-2">
+                    <label for="github-token" class="block text-sm font-medium text-gray-400 mb-2">
                         GitHub Personal Access Token
-                        <a href="https://github.com/settings/tokens?type=beta" target="_blank" class="text-blue-400 hover:underline text-xs ml-2">(Create one)</a>
+                        <a href="https://github.com/settings/tokens?type=beta" target="_blank" class="text-amber-400 hover:underline text-xs ml-2">(Create one)</a>
                     </label>
-                    <input type="password" id="github-token" class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="ghp_... or ghs_...">
-                    <p class="text-xs text-gray-400 mt-2">
-                        Create a <a href="https://github.com/settings/tokens?type=beta" target="_blank" class="text-blue-400 hover:underline">Fine-grained token</a> with <span class="font-mono bg-gray-900 px-1 rounded">'Read and write'</span> access to <span class="font-mono bg-gray-900 px-1 rounded">'Contents'</span>, <span class="font-mono bg-gray-900 px-1 rounded">'Issues'</span>, and <span class="font-mono bg-gray-900 px-1 rounded">'Pull requests'</span> for the target repository.
+                    <!-- Security: autocomplete="new-password" prevents browser from saving the token -->
+                    <input type="password" id="github-token" class="w-full bg-gray-800 border border-gray-600 text-white rounded-lg p-3 focus:ring-2 focus:ring-amber-500 focus:outline-none" placeholder="ghp_... or ghs_..." autocomplete="new-password">
+                    <p class="text-xs text-gray-500 mt-2">
+                        Create a <a href="https://github.com/settings/tokens?type=beta" target="_blank" class="text-amber-400 hover:underline">Fine-grained token</a> with <span class="font-mono bg-gray-950 px-1 rounded">'Read and write'</span> access to <span class="font-mono bg-gray-950 px-1 rounded">'Contents'</span> and <span class="font-mono bg-gray-950 px-1 rounded">'Pull requests'</span> for the target repository.
                     </p>
                 </div>
             </div>
 
-            <button id="run-audit-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg mt-8 transition-colors duration-300 flex items-center justify-center">
-                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-                Run Audit
+            <button id="run-build-btn" class="w-full bg-amber-600 hover:bg-amber-700 text-gray-900 font-bold py-3 px-4 rounded-lg mt-8 transition-colors duration-300 flex items-center justify-center">
+                <!-- Bow tie icon -->
+                <svg class="w-6 h-6 mr-2" viewBox="0 0 24 24" fill="currentColor"><path d="M12.001 1.5c-5.247 0-9.5 4.253-9.5 9.5s4.253 9.5 9.5 9.5 9.5-4.253 9.5-9.5-4.253-9.5-9.5-9.5zm4.015 12.353l-2.516-2.516-1.5 1.5 4.016 4.016zm-8.03 0l-4.016-4.016 1.5-1.5 2.516 2.516zM11 9h2v6h-2z"/></svg>
+                Engage Alfred
             </button>
 
-      <!-- Top-right auth buttons (moved out of the card) -->
-      <div id="auth-top" class="fixed top-4 right-4 z-50">
-        <div class="bg-gray-800/60 backdrop-blur-sm rounded-lg p-2 flex items-center space-x-2">
-          <button id="btn-login" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Log In</button>
-          <button id="btn-logout" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded hidden">Log Out</button>
-          <div id="user-profile" class="ml-2 text-gray-200 hidden text-sm">
-            <div id="user-name" class="font-semibold"></div>
-            <div id="user-email" class="text-xs"></div>
-          </div>
-        </div>
-      </div>
-
             <div id="results-container" class="mt-8 hidden">
-                <h2 class="text-xl font-semibold mb-4 text-center">Audit in Progress...</h2>
+                <h2 class="text-xl font-semibold mb-4 text-center">As you wish, sir. Commencing the build...</h2>
                 <div id="status-list" class="space-y-3"></div>
-                <div id="final-result" class="mt-6 hidden">
-                    <h3 class="text-lg font-semibold text-green-400">Audit Complete!</h3>
-                    <p>Final Pull Request URL:</p>
-                    <a id="final-repo-link" href="#" target="_blank" class="text-blue-400 hover:underline break-all"></a>
+                <div id="final-result" class="mt-6 hidden text-center">
+                    <h3 class="text-lg font-semibold text-green-400">The Task is Complete.</h3>
+                    <p class="text-gray-300">A pull request has been prepared for your review:</p>
+                    <a id="final-repo-link" href="#" target="_blank" class="text-amber-400 hover:underline break-all"></a>
                 </div>
                 <div id="error-message" class="mt-6 hidden p-4 bg-red-900/50 border border-red-700 rounded-lg">
-                    <h3 class="font-bold text-red-300">An error occurred during the audit:</h3>
+                    <h3 class="font-bold text-red-300">Apologies, sir. An issue has occurred:</h3>
                     <p id="error-details" class="text-red-400 font-mono text-sm mt-2"></p>
                 </div>
             </div>
@@ -111,24 +114,21 @@ AUTH0 SETUP INSTRUCTIONS:
 
 <script>
 // --- CONFIGURATION ---
-// PASTE YOUR NGROK FORWARDING URL HERE
-const NGROK_BASE_URL = "https://merited-blotchier-linn.ngrok-free.dev";
-
-// AUTH0 CONFIGURATION - Update these values with your Auth0 settings
-const AUTH0_DOMAIN = "dev-8ze44su0txf6dzg3.us.auth0.com";     // Your Auth0 domain
-const AUTH0_CLIENT_ID = "Yqm5ldoxqE1GtBh5Bc3YBqen1oMs1v2p";     // Your Auth0 client ID
+// IMPORTANT: Update this with your live ngrok URL for the CSP to work.
+const NGROK_BASE_URL = "https://merited-blotchier-linn.ngrok-free.dev"; 
 
 // --- DOM ELEMENTS ---
-const runAuditBtn = document.getElementById('run-audit-btn');
+const runBuildBtn = document.getElementById('run-build-btn');
 const repoUrlInput = document.getElementById('repo-url');
-const strategicGoalInput = document.getElementById('strategic-goal');
-const githubTokenInput = document.getElementById('github-token'); // New
+const projectIdeaInput = document.getElementById('project-idea');
+const githubTokenInput = document.getElementById('github-token');
 const resultsContainer = document.getElementById('results-container');
 const statusList = document.getElementById('status-list');
 const finalResult = document.getElementById('final-result');
 const finalRepoLink = document.getElementById('final-repo-link');
 const errorMessage = document.getElementById('error-message');
 const errorDetails = document.getElementById('error-details');
+
 
 // --- UI HELPER FUNCTIONS ---
 const updateStatus = (id, text, state = 'pending', url = '') => {
@@ -139,42 +139,28 @@ const updateStatus = (id, text, state = 'pending', url = '') => {
         item.classList.add('status-item', 'pending');
         statusList.appendChild(item);
     }
-    
-    let iconHtml = '';
-    if (state === 'pending') {
-        iconHtml = '<div class="spinner mr-3"></div>';
-    } else if (state === 'success') {
-        iconHtml = '<svg class="w-5 h-5 mr-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>';
-    } else { // error
-        iconHtml = '<svg class="w-5 h-5 mr-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path></svg>';
-    }
-
+    let iconHtml = (state === 'pending') ? '<div class="spinner mr-3"></div>' : (state === 'success') ? '<svg class="w-5 h-5 mr-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>' : '<svg class="w-5 h-5 mr-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path></svg>';
     let textHtml = `<div>${text}</div>`;
-    if (url) {
-        textHtml += `<a href="${url}" target="_blank" class="ml-2 text-blue-300 hover:underline">[Link]</a>`;
-    }
-    
+    if (url) textHtml += `<a href="${url}" target="_blank" class="ml-2 text-amber-300 hover:underline">[Review]</a>`;
     item.innerHTML = `${iconHtml}${textHtml}`;
     item.className = `status-item ${state}`;
 };
-
 const showError = (message) => {
     errorDetails.textContent = message;
     errorMessage.classList.remove('hidden');
-    runAuditBtn.disabled = false;
-    runAuditBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+    runBuildBtn.disabled = false;
+    runBuildBtn.classList.remove('opacity-50', 'cursor-not-allowed');
 };
 
 
 // --- MAIN WORKFLOW ---
-const runFullAudit = async () => {
-    // 1. Get inputs and reset UI
+const runFullBuild = async () => {
     const repoUrl = repoUrlInput.value.trim();
-    const strategicGoal = strategicGoalInput.value.trim();
-    const githubToken = githubTokenInput.value.trim(); // New
+    const projectIdea = projectIdeaInput.value.trim();
+    const githubToken = githubTokenInput.value.trim();
 
-    if (!repoUrl || !strategicGoal || !githubToken) { // New
-        alert('Please fill in all fields, including the GitHub Token.');
+    if (!repoUrl || !projectIdea || !githubToken) {
+        alert('Sir, please provide all the required information.');
         return;
     }
 
@@ -182,85 +168,99 @@ const runFullAudit = async () => {
     errorMessage.classList.add('hidden');
     finalResult.classList.add('hidden');
     statusList.innerHTML = '';
-    runAuditBtn.disabled = true;
-    runAuditBtn.classList.add('opacity-50', 'cursor-not-allowed');
+    runBuildBtn.disabled = true;
+    runBuildBtn.classList.add('opacity-50', 'cursor-not-allowed');
 
     try {
-        // --- Agent 1: Security Manager ---
-        const smId = 'sm-status';
-        updateStatus(smId, 'Security Manager: Translating goal to tactical plan...');
-        const tacticalPlanResponse = await fetch(`${NGROK_BASE_URL}/create-tactical-plan`, {
+        // --- Agent 1: Product Manager ---
+        const pmId = 'pm-status';
+        updateStatus(pmId, 'Product Manager: Preparing the project specifications...');
+        const specResponse = await fetch(`${NGROK_BASE_URL}/create-spec`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ repo_url: repoUrl, strategic_goal: strategicGoal })
+            body: JSON.stringify({ project_idea: projectIdea })
         });
-        if (!tacticalPlanResponse.ok) throw new Error(`Security Manager failed: ${await tacticalPlanResponse.text()}`);
-        const tacticalPlanData = await tacticalPlanResponse.json();
-        updateStatus(smId, `Security Manager: Tactical plan created.`, 'success');
+        if (!specResponse.ok) throw new Error(`Product Manager failed: ${await specResponse.text()}`);
+        const specData = await specResponse.json();
+        updateStatus(pmId, `Product Manager: Specifications complete.`, 'success');
 
-        // --- Agent 2: Penetration Tester ---
-        const ptId = 'pt-status';
-        updateStatus(ptId, 'Penetration Tester: Analyzing code for vulnerabilities...');
-        const penTestResponse = await fetch(`${NGROK_BASE_URL}/run-pentest`, {
+        // --- Agent 2: Tech Lead / Architect ---
+        const tlId = 'tl-status';
+        updateStatus(tlId, 'Tech Lead: Designing the software architecture...');
+        const archResponse = await fetch(`${NGROK_BASE_URL}/design-architecture`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ repo_url: repoUrl, tactical_plan: tacticalPlanData.tactical_plan })
+            body: JSON.stringify({ product_spec: specData.product_spec })
         });
-        if (!penTestResponse.ok) throw new Error(`Penetration Tester failed: ${await penTestResponse.text()}`);
-        const penTestData = await penTestResponse.json();
-        updateStatus(ptId, `Penetration Tester: Found ${penTestData.findings.length} vulnerability(s).`, 'success');
+        if (!archResponse.ok) throw new Error(`Tech Lead failed: ${await archResponse.text()}`);
+        const archData = await archResponse.json();
+        updateStatus(tlId, `Tech Lead: Architecture designed with ${archData.files.length} files.`, 'success');
 
-        if (penTestData.findings.length === 0) {
-            finalResult.classList.remove('hidden');
-            finalRepoLink.textContent = "No vulnerabilities found, so no PR was created.";
-            finalRepoLink.removeAttribute('href');
-            return;
+        // --- Agents 3 & 4: Software Engineer & QA (Loop) ---
+        for (let i = 0; i < archData.files.length; i++) {
+            const file_to_build = archData.files[i];
+            
+            // Software Engineer
+            const sweId = `swe-status-${i}`;
+            updateStatus(sweId, `Software Engineer: Drafting code for ${file_to_build.file_path}...`);
+            const codeResponse = await fetch(`${NGROK_BASE_URL}/write-code`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ file_path: file_to_build.file_path, task: file_to_build.task })
+            });
+            if (!codeResponse.ok) throw new Error(`Software Engineer failed for ${file_to_build.file_path}: ${await codeResponse.text()}`);
+            const codeData = await codeResponse.json();
+            updateStatus(sweId, `Software Engineer: Draft complete for ${file_to_build.file_path}.`, 'success');
+            
+            // QA & Security Engineer
+            const qaId = `qa-status-${i}`;
+            updateStatus(qaId, `QA & Security: Reviewing draft of ${file_to_build.file_path}...`);
+            const reviewResponse = await fetch(`${NGROK_BASE_URL}/review-code`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ file_path: file_to_build.file_path, code_to_review: codeData.code })
+            });
+            if (!reviewResponse.ok) throw new Error(`QA & Security failed for ${file_to_build.file_path}: ${await reviewResponse.text()}`);
+            const reviewData = await reviewResponse.json();
+            if (!reviewData.approved) {
+                throw new Error(`QA & Security rejected ${file_to_build.file_path}: ${reviewData.feedback}`);
+            }
+            updateStatus(qaId, `QA & Security: Approved ${file_to_build.file_path}.`, 'success');
         }
 
-        // --- Agent 3: Security Engineer ---
-        const seId = 'se-status';
-        updateStatus(seId, 'Security Engineer: Triaging findings and creating tickets...');
-        const triageResponse = await fetch(`${NGROK_BASE_URL}/triage-findings`, {
+        // --- Final Step: Create Pull Request ---
+        const prId = 'pr-status';
+        updateStatus(prId, 'System: Assembling the components and preparing for review...');
+        const prResponse = await fetch(`${NGROK_BASE_URL}/create-pull-request`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ repo_url: repoUrl, findings: penTestData.findings, github_token: githubToken })
+            body: JSON.stringify({ 
+                repo_url: repoUrl, 
+                github_token: githubToken,
+                architecture: archData,
+                project_idea: projectIdea
+            })
         });
-        if (!triageResponse.ok) throw new Error(`Security Engineer failed: ${await triageResponse.text()}`);
-        const triageData = await triageResponse.json();
-        const firstIssueUrl = triageData.summary.length > 0 ? triageData.summary[0].url : '';
-        updateStatus(seId, `Security Engineer: Created ${triageData.summary.length} GitHub issue(s).`, 'success', firstIssueUrl);
+        if (!prResponse.ok) throw new Error(`PR creation failed: ${await prResponse.text()}`);
+        const prData = await prResponse.json();
+        updateStatus(prId, `System: The pull request is ready for your inspection.`, 'success', prData.pull_request_url);
         
-        // --- Agent 4: Software Engineer ---
-        const sweId = 'swe-status';
-        updateStatus(sweId, 'Software Engineer: Generating code fix for the first vulnerability...');
-        // For the demo, we only fix the first finding
-        const firstFinding = penTestData.findings[0];
-        const fixResponse = await fetch(`${NGROK_BASE_URL}/fix-vulnerability`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ repo_url: repoUrl, vulnerability_finding: firstFinding, github_token: githubToken })
-        });
-        if (!fixResponse.ok) throw new Error(`Software Engineer failed: ${await fixResponse.text()}`);
-        const fixData = await fixResponse.json();
-        updateStatus(sweId, `Software Engineer: Pull request created.`, 'success', fixData.pull_request_url);
-
         // --- Final Result ---
         finalResult.classList.remove('hidden');
-        finalRepoLink.href = fixData.pull_request_url;
-        finalRepoLink.textContent = fixData.pull_request_url;
+        finalRepoLink.href = prData.pull_request_url;
+        finalRepoLink.textContent = prData.pull_request_url;
 
     } catch (error) {
-        console.error('Audit failed:', error);
+        console.error('Build failed:', error);
         let errorJson = {};
         try {
-            // Try to parse the error message as JSON
-            errorJson = JSON.parse(error.message.substring(error.message.indexOf('{')));
+            // A helper to parse potential JSON error details from the backend
+            const jsonString = error.message.substring(error.message.indexOf('{'));
+            errorJson = JSON.parse(jsonString);
         } catch(e) {
-            // Fallback for non-json errors
             errorJson = { detail: error.message };
         }
         
-        // Update the last pending status item to error
         const pendingItem = document.querySelector('.status-item.pending');
         if (pendingItem) {
             const text = pendingItem.textContent || "An unknown step";
@@ -268,162 +268,13 @@ const runFullAudit = async () => {
         }
         showError(errorJson.detail || "An unknown error occurred.");
     } finally {
-        runAuditBtn.disabled = false;
-        runAuditBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+        runBuildBtn.disabled = false;
+        runBuildBtn.classList.remove('opacity-50', 'cursor-not-allowed');
     }
 };
 
-runAuditBtn.addEventListener('click', runFullAudit);
+runBuildBtn.addEventListener('click', runFullBuild);
 </script>
-<script>
-  let auth0 = null;
-
-  // Get DOM elements
-  const loginBtn = document.getElementById('btn-login');
-  const logoutBtn = document.getElementById('btn-logout');
-  const userProfile = document.getElementById('user-profile');
-  const userName = document.getElementById('user-name');
-  const userEmail = document.getElementById('user-email');
-  // Debug UI removed; top-right auth container will show status
-
-  async function configureClient() {
-    // Check if Auth0 credentials appear to be placeholders or are missing
-    const domainLooksPlaceholder = !AUTH0_DOMAIN || AUTH0_DOMAIN.includes('abc123') || AUTH0_DOMAIN.includes('example');
-    const clientIdLooksPlaceholder = !AUTH0_CLIENT_ID || AUTH0_CLIENT_ID.startsWith('YOUR') || AUTH0_CLIENT_ID.includes('default');
-
-    if (domainLooksPlaceholder || clientIdLooksPlaceholder) {
-      console.warn("Auth0 not configured. Please update AUTH0_DOMAIN and AUTH0_CLIENT_ID in the configuration section.");
-      // Show configuration message
-  document.getElementById('auth-top').innerHTML = `
-        <h3 class="text-lg font-semibold mb-3">Authentication</h3>
-        <div class="text-yellow-400 text-sm">
-          <p class="mb-2">⚠️ Auth0 not configured</p>
-          <p>To enable authentication, please:</p>
-          <ol class="list-decimal list-inside mt-2 space-y-1">
-            <li>Create an Auth0 account</li>
-            <li>Update AUTH0_DOMAIN and AUTH0_CLIENT_ID in the code</li>
-            <li>Configure callback URLs in your Auth0 dashboard</li>
-          </ol>
-        </div>
-      `;
-      return;
-    }
-
-    // Helper to dynamically load the Auth0 SPA SDK if it's not already available
-    async function loadAuth0Sdk() {
-      if (window.createAuth0Client) return;
-      return new Promise((resolve, reject) => {
-        const s = document.createElement('script');
-        s.src = 'https://cdn.auth0.com/js/auth0-spa-js/2.1/auth0-spa-js.production.js';
-        s.onload = () => resolve();
-        s.onerror = (e) => reject(new Error('Failed to load Auth0 SDK'));
-        document.head.appendChild(s);
-      });
-    }
-
-    try {
-      // Ensure the SDK is loaded before calling createAuth0Client
-      await loadAuth0Sdk();
-
-      // The SDK may expose the factory as `createAuth0Client` or under the global `auth0` namespace
-      const findFactory = () => (typeof createAuth0Client === 'function' && createAuth0Client) || (window.auth0 && window.auth0.createAuth0Client);
-      let factory = findFactory();
-      const start = Date.now();
-      // Poll briefly (2s) in case the SDK attaches asynchronously
-      while (!factory && Date.now() - start < 2000) {
-        await new Promise((r) => setTimeout(r, 100));
-        factory = findFactory();
-      }
-      if (!factory) {
-        const diag = {
-          typeof_createAuth0Client: typeof createAuth0Client,
-          window_auth0_type: typeof window.auth0,
-          window_auth0_keys: window.auth0 ? Object.keys(window.auth0) : null
-        };
-        throw new Error('createAuth0Client is not available after loading the SDK; diagnostics: ' + JSON.stringify(diag));
-      }
-
-      // Use the exact callback path that matches your Auth0 application settings
-      const callbackUrl = window.location.origin + '/Alfred/';
-
-      auth0 = await factory({
-        domain: AUTH0_DOMAIN,
-        clientId: AUTH0_CLIENT_ID,
-        authorizationParams: {
-          redirect_uri: callbackUrl
-        },
-        cacheLocation: 'localstorage'
-      });
-    } catch (error) {
-      console.error('Error configuring Auth0:', error, error && error.message);
-      document.getElementById('auth-top').innerHTML =
-        `<div class="text-red-400 text-sm p-2">Auth0 configuration error. Please check your credentials and network.<br/><small>${(error && error.message) || ''}</small></div>`;
-    }
-  }
-
-  async function updateUI() {
-    // Skip UI update if Auth0 is not configured
-    if (!auth0) {
-      return;
-    }
-
-    try {
-      const isAuthenticated = await auth0.isAuthenticated();
-
-      if (isAuthenticated) {
-        loginBtn.classList.add('hidden');
-        logoutBtn.classList.remove('hidden');
-        userProfile.classList.remove('hidden');
-
-        const user = await auth0.getUser();
-        userName.textContent = user.name || '';
-        userEmail.textContent = user.email || '';
-      } else {
-        loginBtn.classList.remove('hidden');
-        logoutBtn.classList.add('hidden');
-        userProfile.classList.add('hidden');
-        userName.textContent = '';
-        userEmail.textContent = '';
-      }
-    } catch (error) {
-      console.error("Error updating UI:", error);
-    }
-  }
-
-  async function handleRedirectCallback() {
-    // Skip callback handling if Auth0 is not configured
-    if (!auth0) {
-      return;
-    }
-
-    try {
-      const query = window.location.search;
-      if (query.includes('code=') && query.includes('state=')) {
-        await auth0.handleRedirectCallback();
-        window.history.replaceState({}, document.title, window.location.pathname);
-      }
-    } catch (error) {
-      console.error("Error handling redirect callback:", error);
-      // Clear the URL parameters on error to prevent infinite loops
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
-  }
-
-  window.onload = async () => {
-    await configureClient();
-    await handleRedirectCallback();
-    await updateUI();
-
-    // Add event listeners
-    loginBtn.addEventListener('click', () => auth0 ? auth0.loginWithRedirect() : alert('Auth0 not available'));
-    logoutBtn.addEventListener('click', () => auth0 ? auth0.logout({ 
-      logoutParams: { returnTo: window.location.origin + '/Alfred/' }
-    }) : alert('Auth0 not available'));
-
-    // No debug UI present in production
-  };
-</script>
-
 </body>
 </html>
 
