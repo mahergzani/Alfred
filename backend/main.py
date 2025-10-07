@@ -168,27 +168,39 @@ async def create_pull_request(request: PRRequest):
             # Security: The token is used here for authentication. Never log it.
             auth_repo_url = f"https://{request.github_token}@github.com/{owner}/{repo}.git"
             
+            # Since the remote repo is empty, we initialize a new one locally.
+            os.makedirs(repo_path)
             subprocess.run(["git", "init"], cwd=repo_path, check=True)
             
+            # Create a README file to have an initial commit
+            with open(os.path.join(repo_path, 'README.md'), 'w') as f:
+                f.write(f"# {repo}\n\nAI-generated project for: {request.project_idea}\n")
+            subprocess.run(["git", "add", "README.md"], cwd=repo_path, check=True)
+            subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=repo_path, check=True)
+            subprocess.run(["git", "branch", "-M", "main"], cwd=repo_path, check=True) # Ensure branch is 'main'
+            
+            # Add the remote and push the initial commit
+            subprocess.run(["git", "remote", "add", "origin", auth_repo_url], cwd=repo_path, check=True)
+            subprocess.run(["git", "push", "-u", "origin", "main"], cwd=repo_path, check=True)
+
+            # Now, create a new branch for the feature
+            branch_name = "feat/initial-build-by-ai"
+            subprocess.run(["git", "checkout", "-b", branch_name], cwd=repo_path, check=True)
+
+            # Generate code for all files
             for file_detail in request.architecture.files:
                 code_response = await write_code(CodeRequest(file_path=file_detail.file_path, task=file_detail.task))
                 file_path = os.path.join(repo_path, file_detail.file_path)
                 os.makedirs(os.path.dirname(file_path), exist_ok=True)
-                with open(file_path, 'w', encoding='utf-8') as f: f.write(code_response.code)
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write(code_response.code)
 
-            branch_name = "feat/initial-build-by-ai"
-            git_commands = [
-                ["git", "checkout", "-b", branch_name],
-                ["git", "add", "."],
-                ["git", "commit", "-m", f"feat: Initial AI-generated build for '{request.project_idea}'"],
-                ["git", "remote", "add", "origin", auth_repo_url],
-                ["git", "push", "-u", "origin", branch_name]
-            ]
+            # Commit and Push the new feature branch
+            subprocess.run(["git", "add", "."], cwd=repo_path, check=True)
+            subprocess.run(["git", "commit", "-m", f"feat: Initial AI-generated build for '{request.project_idea}'"], cwd=repo_path, check=True)
+            subprocess.run(["git", "push", "-u", "origin", branch_name], cwd=repo_path, check=True, capture_output=True, text=True)
             
-            for cmd in git_commands:
-                # Security: Use a timeout to prevent resource exhaustion (Denial of Service).
-                subprocess.run(cmd, cwd=repo_path, check=True, capture_output=True, text=True, timeout=60)
-            
+            # Create Pull Request
             headers = {"Authorization": f"token {request.github_token}", "Accept": "application/vnd.github.v3+json"}
             pr_payload = {"title": f"AI Initial Build: {request.project_idea}", "head": branch_name, "base": "main", "body": "This is an AI-generated pull request containing the initial software build."}
             api_url = f"https://api.github.com/repos/{owner}/{repo}/pulls"
@@ -212,4 +224,6 @@ async def create_pull_request(request: PRRequest):
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+
 
