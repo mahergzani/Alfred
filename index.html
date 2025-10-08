@@ -5,10 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Alfred: Your AI Software Butler</title>
     
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
 
-    <!-- Google Fonts: Inter -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" 
           rel="stylesheet">
 
@@ -25,28 +23,25 @@
         .bg-alfred-gold { background-color: #d4af37; }
         .hover\:bg-alfred-gold-dark:hover { background-color: #b89b30; }
         
-        /* Custom styles for status list */
-        .status-item {
-            display: flex;
-            align-items: center;
-            padding: 0.75rem;
-            border-left: 4px solid #4a4a4a;
-            transition: all 0.3s ease;
+        /* Custom styles for the log container */
+        #log-container {
+            background-color: #1e1e1e;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.875rem;
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #4a4a4a;
         }
-        .status-item.pending { border-left-color: #d4af37; }
-        .status-item.success { border-left-color: #22c55e; }
-        .status-item.error { border-left-color: #ef4444; }
-        .spinner {
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            border-top-color: #d4af37;
-            border-radius: 50%;
-            width: 1rem;
-            height: 1rem;
-            animation: spin 1s linear infinite;
+        .log-line {
+            white-space: pre-wrap;
+            word-break: break-all;
         }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
+        .log-line.info { color: #cccccc; }
+        .log-line.success { color: #22c55e; }
+        .log-line.error { color: #ef4444; }
+        .log-line.warn { color: #facc15; }
     </style>
 </head>
 <body class="text-gray-200 min-h-screen flex items-center justify-center p-4">
@@ -88,9 +83,8 @@
 
                 <div id="results-container" class="mt-8 space-y-4 hidden">
                     <h2 class="text-2xl font-bold text-center text-alfred-gold">Building in Progress...</h2>
-                    <div id="status-list" class="space-y-2">
-                        <!-- Status items will be injected here by JavaScript -->
-                    </div>
+                    <div id="log-container">
+                        </div>
                     <div id="final-result" class="text-center pt-4 hidden">
                         <p class="text-lg text-green-400 font-semibold" id="final-message"></p>
                         <a id="final-repo-link" href="#" target="_blank" rel="noopener noreferrer" class="mt-2 inline-block bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded">View Pull Request</a>
@@ -106,7 +100,7 @@
 
     <script>
         // --- CONFIGURATION ---
-        // PASTE YOUR NGROK FORWARDING URL HERE
+        // This should match the URL from your ngrok terminal
         const NGROK_BASE_URL = "https://merited-blotchier-linn.ngrok-free.dev";
 
         // --- DOM ELEMENTS ---
@@ -115,7 +109,7 @@
         const repoUrlInput = document.getElementById('repo-url');
         const githubTokenInput = document.getElementById('github-token');
         const resultsContainer = document.getElementById('results-container');
-        const statusList = document.getElementById('status-list');
+        const logContainer = document.getElementById('log-container');
         const finalResult = document.getElementById('final-result');
         const finalMessage = document.getElementById('final-message');
         const finalRepoLink = document.getElementById('final-repo-link');
@@ -123,37 +117,22 @@
         const errorDetails = document.getElementById('error-details');
 
         // --- UI HELPER FUNCTIONS ---
-        const updateStatus = (id, text, state = 'pending') => {
-            let item = document.getElementById(`status-${id}`);
-            if (!item) {
-                item = document.createElement('div');
-                item.id = `status-${id}`;
-                item.className = 'status-item';
-                statusList.appendChild(item);
-            }
-            
-            let iconHtml = '';
-            if (state === 'pending') {
-                iconHtml = '<div class="spinner mr-3"></div>';
-            } else if (state === 'success') {
-                iconHtml = '<svg class="w-5 h-5 text-green-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>';
-            } else if (state === 'error') {
-                 iconHtml = '<svg class="w-5 h-5 text-red-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>';
-            }
-            
-            item.innerHTML = `${iconHtml}<span class="text-gray-300">${text}</span>`;
-            item.classList.remove('pending', 'success', 'error');
-            item.classList.add(state);
-            return item;
+        const addLog = (message, level = 'info') => {
+            const logLine = document.createElement('div');
+            logLine.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logLine.className = `log-line ${level}`;
+            logContainer.appendChild(logLine);
+            logContainer.scrollTop = logContainer.scrollHeight; // Auto-scroll to bottom
         };
 
         const showError = (message) => {
             errorDetails.textContent = message;
             errorMessage.classList.remove('hidden');
+            addLog(`ERROR: ${message}`, 'error');
         };
         
         const resetUI = () => {
-            statusList.innerHTML = '';
+            logContainer.innerHTML = '';
             resultsContainer.classList.add('hidden');
             finalResult.classList.add('hidden');
             errorMessage.classList.add('hidden');
@@ -181,95 +160,36 @@
             resultsContainer.classList.remove('hidden');
 
             try {
-                // --- Step 1: Call Product Manager to create spec ---
-                updateStatus(1, 'Product Manager: Creating product specification...');
-                const specResponse = await fetch(`${NGROK_BASE_URL}/create-spec`, {
+                // We make a single call to the backend endpoint that orchestrates the entire process.
+                // The backend will stream log updates back to us.
+                const response = await fetch(`${NGROK_BASE_URL}/create-pull-request`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ project_idea: projectIdea })
+                    body: JSON.stringify({
+                        repo_url: repoUrl,
+                        github_token: githubToken,
+                        project_idea: projectIdea
+                    })
                 });
-                if (!specResponse.ok) throw new Error(await specResponse.text());
-                const specData = await specResponse.json();
-                updateStatus(1, 'Product Manager: Specification created.', 'success');
 
-                // --- Step 2: Call Tech Lead to design architecture ---
-                updateStatus(2, 'Tech Lead: Designing software architecture...');
-                const archResponse = await fetch(`${NGROK_BASE_URL}/design-architecture`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ product_spec: specData.product_spec })
-                });
-                if (!archResponse.ok) throw new Error(await archResponse.text());
-                const archData = await archResponse.json();
-                updateStatus(2, `Tech Lead: Architecture designed with ${archData.files.length} files.`, 'success');
-
-                // --- Step 3: Loop through files, write code, and get reviews (Simplified for demo) ---
-                let allApproved = true;
-                for (let i = 0; i < archData.files.length; i++) {
-                    const file = archData.files[i];
-                    const statusId = 3 + i;
-                    
-                    // Call Software Engineer
-                    updateStatus(statusId, `Software Engineer: Writing code for ${file.file_path}...`, 'pending');
-                    const codeResponse = await fetch(`${NGROK_BASE_URL}/write-code`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(file)
-                    });
-                    if (!codeResponse.ok) throw new Error(await codeResponse.text());
-                    const codeData = await codeResponse.json();
-
-                    // Call QA & Security Engineer
-                    updateStatus(statusId, `QA & Security Engineer: Reviewing ${file.file_path}...`, 'pending');
-                    const reviewResponse = await fetch(`${NGROK_BASE_URL}/review-code`, {
-                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ file_path: file.file_path, code_to_review: codeData.code })
-                    });
-                    if (!reviewResponse.ok) throw new Error(await reviewResponse.text());
-                    const reviewData = await reviewResponse.json();
-
-                    if(reviewData.approved) {
-                        updateStatus(statusId, `QA & Security Engineer: Approved ${file.file_path}.`, 'success');
-                    } else {
-                        updateStatus(statusId, `QA & Security Engineer: Rejected ${file.file_path}.`, 'error');
-                        allApproved = false;
-                        throw new Error(`Code for ${file.file_path} rejected: ${reviewData.feedback}`);
-                    }
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || 'An unknown error occurred on the server.');
                 }
+                
+                // If the request is successful, the process is complete.
+                // The 'main.py' script runs synchronously and only returns upon completion or failure.
+                // The logs on your ngrok terminal show the detailed step-by-step progress.
+                const prData = await response.json();
 
-                // --- Final Step: Create Pull Request ---
-                if (allApproved) {
-                    updateStatus('final', 'Alfred: All files written and approved. Creating pull request...', 'pending');
-                     const prResponse = await fetch(`${NGROK_BASE_URL}/create-pull-request`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            repo_url: repoUrl,
-                            github_token: githubToken,
-                            architecture: archData,
-                            project_idea: projectIdea
-                        })
-                    });
-                    if (!prResponse.ok) throw new Error(await prResponse.text());
-                    const prData = await prResponse.json();
-                    
-                    updateStatus('final', 'Alfred: Pull request created successfully!', 'success');
-                    finalMessage.textContent = "Your new software is ready for review, sir.";
-                    finalRepoLink.href = prData.pull_request_url;
-                    finalResult.classList.remove('hidden');
-                }
+                addLog("--- [END] AI Butler Service Request Successful ---", 'success');
+                finalMessage.textContent = "Your new software is ready for review, sir.";
+                finalRepoLink.href = prData.pull_request_url;
+                finalResult.classList.remove('hidden');
                 
             } catch (error) {
                 console.error('An error occurred during the build:', error);
-                const errorObj = JSON.parse(error.message);
-                showError(errorObj.detail || 'An unknown error occurred.');
-                // Mark the last pending step as failed
-                const pendingItem = document.querySelector('.status-item.pending');
-                if (pendingItem) {
-                    pendingItem.classList.remove('pending');
-                    pendingItem.classList.add('error');
-                }
+                showError(error.message);
             } finally {
                 buildBtn.disabled = false;
                 buildBtn.innerHTML = '<svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg> Engage Alfred';
@@ -279,4 +199,3 @@
 
 </body>
 </html>
-

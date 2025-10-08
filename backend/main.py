@@ -1,6 +1,6 @@
 # main.py
 # This script orchestrates a team of AI agents to build or update secure software.
-# This version includes a self-correction loop for the Software Engineer.
+# This version includes a stronger prompt for the Tech Lead agent.
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Response
@@ -79,19 +79,24 @@ class SpecRequest(BaseModel):
 class SpecResponse(BaseModel):
     product_spec: str
 
-PRODUCT_MANAGER_PROMPT = """You are an expert AI Product Manager...""" # Omitted for brevity
+PRODUCT_MANAGER_PROMPT = """You are an expert AI Product Manager. Your role is to convert a user's high-level project idea or update request into a detailed technical specification. 
+If provided, you must consider the context of the existing codebase. The spec should outline user stories, new or modified features, a recommended technology stack (e.g., Python FastAPI backend, React frontend), and data models. The output must be a concise, well-structured markdown string."""
 
 @app.post("/create-spec", response_model=SpecResponse)
 async def create_spec(request: SpecRequest):
-    model = genai.GenerativeModel('gemini-2.5-flash-preview-05-20', system_instruction=PRODUCT_MANAGER_PROMPT)
-    user_prompt = f"Project Request: {request.project_idea}"
-    if request.existing_code_context:
-        user_prompt += f"\n\nHere is the context of the existing project structure and files:\n{request.existing_code_context}"
-    response = model.generate_content(user_prompt)
-    return SpecResponse(product_spec=response.text)
+    try:
+        model = genai.GenerativeModel('gemini-2.5-flash-preview-05-20', system_instruction=PRODUCT_MANAGER_PROMPT)
+        user_prompt = f"Project Request: {request.project_idea}"
+        if request.existing_code_context:
+            user_prompt += f"\n\nHere is the context of the existing project structure and files:\n{request.existing_code_context}"
+        response = model.generate_content(user_prompt, request_options={"timeout": 120})
+        return SpecResponse(product_spec=response.text)
+    except Exception as e:
+        logging.error(f"Product Manager agent failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Product Manager agent timed out or failed: {e}")
 
 
-# --- Agent 2: Tech Lead / Architect ---
+# --- Agent 2: Tech Lead / Architect (UPGRADED PROMPT) ---
 class ArchRequest(BaseModel):
     product_spec: str
     existing_code_context: str = ""
@@ -100,61 +105,92 @@ class FileDetail(BaseModel):
 class ArchResponse(BaseModel):
     files_to_modify: List[FileDetail]
 
-TECH_LEAD_PROMPT = """You are an expert AI Tech Lead...""" # Omitted for brevity
+# MODIFIED: Prompt is now much more strict to prevent deviation.
+TECH_LEAD_PROMPT = """You are an expert AI Tech Lead and Software Architect. Your task is to take a product specification and design the necessary file structure and tasks for a development team.
+
+You will be given the product spec and the context of the existing code.
+
+Your ONLY output MUST be a valid JSON object with a single key "files_to_modify". This key must hold an array of objects.
+Each object in the array represents a file to be created or modified and must have three keys:
+1. "file_path": A string representing the full path of the file (e.g., "src/main.py").
+2. "task": A specific, one-sentence instruction for a developer on what to build or modify in that file.
+3. "reasoning": A brief explanation of why this change is necessary.
+
+Do NOT generate an OpenAPI spec. Do NOT write any code. Do NOT include any text outside of the single JSON object.
+
+Example of a valid response:
+{
+  "files_to_modify": [
+    {
+      "file_path": "README.md",
+      "task": "Create a README.md file that explains the project's purpose and setup instructions.",
+      "reasoning": "Provides essential documentation for new developers."
+    },
+    {
+      "file_path": "src/api/endpoints.py",
+      "task": "Update the user endpoint to include a new 'profile_picture_url' field.",
+      "reasoning": "Adds the user profile picture feature as requested in the spec."
+    }
+  ]
+}
+"""
 
 @app.post("/design-architecture", response_model=ArchResponse)
 async def design_architecture(request: ArchRequest):
-    model = genai.GenerativeModel('gemini-2.5-flash-preview-05-20', system_instruction=TECH_LEAD_PROMPT, generation_config={"response_mime_type": "application/json"})
-    user_prompt = f"Product Specification:\n{request.product_spec}"
-    if request.existing_code_context:
-        user_prompt += f"\n\nHere is the context of the existing project structure and files that you need to modify:\n{request.existing_code_context}"
-    
-    response = model.generate_content(user_prompt)
-    raw_text = response.text
-    logging.info(f"--- RAW AI RESPONSE (Tech Lead) ---\n{raw_text}\n-----------------------")
-    
     try:
+        model = genai.GenerativeModel('gemini-2.5-flash-preview-05-20', system_instruction=TECH_LEAD_PROMPT, generation_config={"response_mime_type": "application/json"})
+        user_prompt = f"Product Specification:\n{request.product_spec}"
+        if request.existing_code_context:
+            user_prompt += f"\n\nHere is the context of the existing project structure and files that you need to modify:\n{request.existing_code_context}"
+        
+        response = model.generate_content(user_prompt, request_options={"timeout": 120})
+        raw_text = response.text
+        logging.info(f"--- RAW AI RESPONSE (Tech Lead) ---\n{raw_text}\n-----------------------")
+        
         response_json = json.loads(raw_text)
         if isinstance(response_json, list):
-            logging.warning("AI returned a list for architecture, wrapping it in the expected structure.")
             response_json = {"files_to_modify": response_json}
         if "files_to_modify" not in response_json:
             raise HTTPException(status_code=500, detail=f"AI response for architecture is missing 'files_to_modify' key. Raw: {raw_text}")
         return ArchResponse.model_validate(response_json)
     except (ValidationError, json.JSONDecodeError) as e:
-        logging.error(f"Tech Lead failed to produce valid JSON. Error: {e}. Raw: {raw_text}")
+        logging.error(f"Tech Lead failed to produce valid JSON. Error: {e}. Raw: {response.text if 'response' in locals() else 'No response'}")
         raise HTTPException(status_code=500, detail=f"Tech Lead agent failed to generate a valid architecture plan. Error: {e}")
+    except Exception as e:
+        logging.error(f"Tech Lead agent failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Tech Lead agent timed out or failed: {e}")
 
 
-# --- Agent 3: Software Engineer (UPGRADED) ---
+# --- Agent 3: Software Engineer ---
 class CodeRequest(BaseModel):
     file_path: str; task: str; existing_code: str = ""
-    # New: Add field for QA feedback
-    feedback: str = "" 
-
+    feedback: str = ""
 class CodeResponse(BaseModel):
     code: str
 
-# MODIFIED: Prompt now includes instructions for handling feedback.
 SOFTWARE_ENGINEER_PROMPT = """You are an expert AI Software Engineer. You write clean, functional, and secure code. You will be given a file path, a specific task, and potentially the existing code from that file. 
 If you are also given feedback from a QA review, you MUST address that feedback in your new version of the code.
 Your job is to write the complete, updated code for that file to accomplish the task, incorporating any feedback. If existing code is provided, modify it as needed. If not, create it from scratch. 
-Only output the raw, complete code for the file. Do not include any explanation or markdown formatting."""
+Only output the raw, complete code for the file. Do not include any explanation, markdown formatting, or any text other than the code itself."""
 
 @app.post("/write-code", response_model=CodeResponse)
 async def write_code(request: CodeRequest):
-    model = genai.GenerativeModel('gemini-2.5-flash-preview-05-20', system_instruction=SOFTWARE_ENGINEER_PROMPT)
-    user_prompt = f"File Path: {request.file_path}\nTask: {request.task}"
-    if request.existing_code:
-        user_prompt += f"\n\nHere is the existing code for the file that you must modify:\n```\n{request.existing_code}\n```"
-    if request.feedback:
-        user_prompt += f"\n\IMPORTANT: Your previous attempt was rejected. You MUST fix the following issues:\n{request.feedback}"
-    
-    response = model.generate_content(user_prompt)
-    cleaned_code = response.text.strip()
-    if cleaned_code.startswith("```") and cleaned_code.endswith("```"):
-        cleaned_code = '\n'.join(cleaned_code.split('\n')[1:-1])
-    return CodeResponse(code=cleaned_code)
+    try:
+        model = genai.GenerativeModel('gemini-2.5-flash-preview-05-20', system_instruction=SOFTWARE_ENGINEER_PROMPT)
+        user_prompt = f"File Path: {request.file_path}\nTask: {request.task}"
+        if request.existing_code:
+            user_prompt += f"\n\nHere is the existing code for that file that you must modify:\n```\n{request.existing_code}\n```"
+        if request.feedback:
+            user_prompt += f"\n\IMPORTANT: Your previous attempt was rejected. You MUST fix the following issues:\n{request.feedback}"
+        
+        response = model.generate_content(user_prompt, request_options={"timeout": 120})
+        cleaned_code = response.text.strip()
+        if cleaned_code.startswith("```") and cleaned_code.endswith("```"):
+            cleaned_code = '\n'.join(cleaned_code.split('\n')[1:-1])
+        return CodeResponse(code=cleaned_code)
+    except Exception as e:
+        logging.error(f"Software Engineer agent failed for file {request.file_path}: {e}")
+        raise HTTPException(status_code=500, detail=f"Software Engineer agent timed out or failed for {request.file_path}: {e}")
 
 
 # --- Agent 4: QA & Security Engineer ---
@@ -163,20 +199,23 @@ class ReviewRequest(BaseModel):
 class ReviewResponse(BaseModel):
     approved: bool; feedback: str
 
-QA_SECURITY_PROMPT = """You are an expert QA and Security Engineer...""" # Omitted for brevity
+QA_SECURITY_PROMPT = """You are an expert QA and Security Engineer. You review code for bugs and security vulnerabilities. You will be given a file path and its code. If the code is high-quality, functional, and secure, respond with a JSON object: `{"approved": true, "feedback": "Code looks good and follows security best practices."}`. If you find any issues, respond with `{"approved": false, "feedback": "A detailed, constructive explanation of the issues found."}`."""
 
 @app.post("/review-code", response_model=ReviewResponse)
 async def review_code(request: ReviewRequest):
-    model = genai.GenerativeModel('gemini-2.5-flash-preview-05-20', system_instruction=QA_SECURITY_PROMPT, generation_config={"response_mime_type": "application/json"})
-    response = model.generate_content(f"File to Review: {request.file_path}\n\nCode:\n{request.code_to_review}")
     try:
+        model = genai.GenerativeModel('gemini-2.5-flash-preview-05-20', system_instruction=QA_SECURITY_PROMPT, generation_config={"response_mime_type": "application/json"})
+        response = model.generate_content(f"File to Review: {request.file_path}\n\nCode:\n{request.code_to_review}", request_options={"timeout": 120})
         return ReviewResponse.model_validate_json(response.text)
-    except (ValidationError, json.JSONDecodeError):
-        logging.error(f"QA agent failed to produce valid JSON. Raw: {response.text}")
+    except (ValidationError, json.JSONDecodeError) as e:
+        logging.error(f"QA agent failed to produce valid JSON. Raw: {response.text if 'response' in locals() else 'No response'}")
         raise HTTPException(status_code=500, detail="QA agent failed to generate a valid review.")
+    except Exception as e:
+        logging.error(f"QA agent failed for file {request.file_path}: {e}")
+        raise HTTPException(status_code=500, detail=f"QA agent timed out or failed for {request.file_path}: {e}")
 
 
-# --- Final Step: Create Pull Request (UPGRADED WITH SELF-CORRECTION) ---
+# --- Final Step: Create Pull Request ---
 class PRRequest(BaseModel):
     repo_url: str; github_token: str; project_idea: str
 class PRResponse(BaseModel):
@@ -197,7 +236,7 @@ async def create_pull_request(request: PRRequest):
             auth_repo_url = f"https://{request.github_token}@github.com/{owner}/{repo}.git"
             
             logging.info("--> [Step 1/7] Cloning repository...")
-            subprocess.run(["git", "clone", auth_repo_url, repo_path], check=True, capture_output=True)
+            subprocess.run(["git", "clone", auth_repo_url, repo_path], check=True, capture_output=True, timeout=60)
             logging.info("<-- [Step 1/7] Repository cloned successfully.")
             
             existing_code_context = ""
@@ -229,44 +268,28 @@ async def create_pull_request(request: PRRequest):
                     with open(file_path, 'r', encoding='utf-8') as f:
                         existing_code = f.read()
                 
-                # --- START OF SELF-CORRECTION LOOP ---
-                max_retries = 3
-                current_feedback = ""
-                approved = False
-                final_code = ""
+                max_retries = 3; current_feedback = ""; approved = False; final_code = ""
 
                 for attempt in range(max_retries):
                     logging.info(f"      - Attempt {attempt + 1}/{max_retries}: Engineer writing code...")
-                    code_response = await write_code(CodeRequest(
-                        file_path=file_detail.file_path, 
-                        task=file_detail.task, 
-                        existing_code=existing_code if attempt == 0 else final_code, # Use original code first, then the last attempt
-                        feedback=current_feedback
-                    ))
+                    code_response = await write_code(CodeRequest(file_path=file_detail.file_path, task=file_detail.task, existing_code=existing_code if attempt == 0 else final_code, feedback=current_feedback))
                     
                     logging.info(f"      - Attempt {attempt + 1}/{max_retries}: QA reviewing code...")
                     review_response = await review_code(ReviewRequest(file_path=file_detail.file_path, code_to_review=code_response.code))
                     
                     if review_response.approved:
                         logging.info(f"      - Attempt {attempt + 1}/{max_retries}: QA Approved!")
-                        approved = True
-                        final_code = code_response.code
-                        break # Exit the loop on success
+                        approved = True; final_code = code_response.code; break
                     else:
                         logging.warning(f"      - Attempt {attempt + 1}/{max_retries}: QA Rejected. Feedback: {review_response.feedback}")
-                        current_feedback = review_response.feedback # Update feedback for the next attempt
-                        final_code = code_response.code # Keep the last failed code for context
+                        current_feedback = review_response.feedback; final_code = code_response.code
                 
                 if not approved:
-                    logging.error(f"Failed to get code approved for {file_detail.file_path} after {max_retries} attempts.")
                     raise HTTPException(status_code=400, detail=f"QA agent failed to approve code for {file_detail.file_path} after {max_retries} attempts. Last feedback: {current_feedback}")
                 
-                # --- END OF SELF-CORRECTION LOOP ---
-
                 logging.info(f"    - Saving approved code for {file_detail.file_path}.")
                 os.makedirs(os.path.dirname(file_path), exist_ok=True)
-                with open(file_path, 'w', encoding='utf-8') as f:
-                    f.write(final_code)
+                with open(file_path, 'w', encoding='utf-8') as f: f.write(final_code)
 
             logging.info("<-- [Step 5/7] Software Engineer finished writing all files.")
             
