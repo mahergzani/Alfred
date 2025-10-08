@@ -6,47 +6,32 @@
     <title>Alfred: Your AI Software Butler</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" 
           rel="stylesheet">
 
     <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #1a1a1a; /* Deep charcoal */
-        }
-        .bg-alfred-main { background-color: #2c2c2c; } /* Darker gray for main card */
-        .bg-alfred-input { background-color: #383838; } /* Lighter gray for inputs */
-        .text-alfred-gold { color: #d4af37; } /* Gold/Amber for highlights */
-        .border-alfred-gold { border-color: #d4af37; }
-        .ring-alfred-gold { --tw-ring-color: #d4af37; }
+        body { font-family: 'Inter', sans-serif; background-color: #1a1a1a; }
+        .bg-alfred-main { background-color: #2c2c2c; }
+        .bg-alfred-input { background-color: #383838; }
+        .text-alfred-gold { color: #d4af37; }
         .bg-alfred-gold { background-color: #d4af37; }
         .hover\:bg-alfred-gold-dark:hover { background-color: #b89b30; }
-        
-        /* Custom styles for the log container */
-        #log-container {
-            background-color: #1e1e1e;
-            border-radius: 0.5rem;
-            padding: 1rem;
-            font-family: 'Courier New', Courier, monospace;
-            font-size: 0.875rem;
-            max-height: 400px;
-            overflow-y: auto;
-            border: 1px solid #4a4a4a;
+        #chat-window {
+            background-color: #1e1e1e; border-radius: 0.5rem; padding: 1.5rem;
+            height: 500px; overflow-y: auto; border: 1px solid #4a4a4a;
+            display: flex; flex-direction: column; gap: 1rem;
         }
-        .log-line {
-            white-space: pre-wrap;
-            word-break: break-all;
-        }
-        .log-line.info { color: #cccccc; }
-        .log-line.success { color: #22c55e; }
-        .log-line.error { color: #ef4444; }
-        .log-line.warn { color: #facc15; }
+        .message { padding: 0.75rem 1rem; border-radius: 0.75rem; max-width: 80%; word-wrap: break-word; }
+        .message.user { background-color: #4a4a4a; align-self: flex-end; }
+        .message.alfred { background-color: #383838; align-self: flex-start; white-space: pre-wrap; font-family: 'Courier New', Courier, monospace; font-size: 0.875rem;}
+        .message-sender { font-weight: bold; margin-bottom: 0.25rem; color: #d4af37; }
     </style>
 </head>
 <body class="text-gray-200 min-h-screen flex items-center justify-center p-4">
 
-    <div class="w-full max-w-2xl mx-auto">
+    <div class="w-full max-w-4xl mx-auto">
         <div class="bg-alfred-main rounded-xl shadow-2xl p-8 md:p-12">
             
             <header class="text-center mb-8">
@@ -55,44 +40,18 @@
             </header>
 
             <main>
-                <div class="space-y-6">
-                    <div>
-                        <label for="project-idea" class="block text-sm font-medium text-gray-300 mb-1">Project Idea</label>
-                        <textarea id="project-idea" rows="3" class="w-full bg-alfred-input border border-gray-600 rounded-md p-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-alfred-gold transition" placeholder="e.g., A secure blog platform with user accounts and markdown support."></textarea>
+                <div id="chat-container" class="space-y-4">
+                    <div id="chat-window">
+                        </div>
+                    <div id="input-area" class="flex items-center gap-4">
+                        <textarea id="message-input" rows="1" class="w-full bg-alfred-input border border-gray-600 rounded-md p-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-alfred-gold transition" placeholder="Describe the application you want to build, or provide feedback..."></textarea>
+                        <button id="send-btn" class="bg-alfred-gold text-gray-900 font-bold py-3 px-6 rounded-md hover:bg-alfred-gold-dark transition-colors duration-300">Send</button>
                     </div>
-                    
-                    <div>
-                        <label for="repo-url" class="block text-sm font-medium text-gray-300 mb-1">New GitHub Repository URL</label>
-                        <input type="url" id="repo-url" class="w-full bg-alfred-input border border-gray-600 rounded-md p-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-alfred-gold transition" placeholder="https://github.com/your-username/new-empty-repo">
-                        <p class="text-xs text-gray-500 mt-1">Please provide a link to a public repository.</p>
-                    </div>
-
-                    <div>
-                        <label for="github-token" class="block text-sm font-medium text-gray-300 mb-1">GitHub Personal Access Token</label>
-                        <input type="password" id="github-token" class="w-full bg-alfred-input border border-gray-600 rounded-md p-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-alfred-gold transition" placeholder="ghp_...">
-                         <p class="text-xs text-gray-500 mt-2">
-                             <a href="https://github.com/settings/tokens?type=beta" target="_blank" rel="noopener noreferrer" class="text-alfred-gold hover:underline">Create a Fine-grained token</a> with 'Read and write' access to 'Contents', 'Issues', and 'Pull requests' for the target repository.
-                        </p>
-                    </div>
-
-                    <button id="build-btn" class="w-full bg-alfred-gold text-gray-900 font-bold py-3 px-4 rounded-md hover:bg-alfred-gold-dark transition-colors duration-300 flex items-center justify-center text-lg">
-                        <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
-                        Engage Alfred
-                    </button>
                 </div>
 
-                <div id="results-container" class="mt-8 space-y-4 hidden">
-                    <h2 class="text-2xl font-bold text-center text-alfred-gold">Building in Progress...</h2>
-                    <div id="log-container">
-                        </div>
-                    <div id="final-result" class="text-center pt-4 hidden">
-                        <p class="text-lg text-green-400 font-semibold" id="final-message"></p>
-                        <a id="final-repo-link" href="#" target="_blank" rel="noopener noreferrer" class="mt-2 inline-block bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded">View Pull Request</a>
-                    </div>
-                    <div id="error-message" class="bg-red-900 border border-red-700 text-red-200 px-4 py-3 rounded-md hidden">
-                        <strong class="font-bold">An error occurred:</strong>
-                        <span class="block" id="error-details"></span>
-                    </div>
+                <div id="final-result" class="text-center pt-4 hidden">
+                     <p class="text-lg text-green-400 font-semibold">Build Complete!</p>
+                     <button id="download-zip-btn" class="mt-2 inline-block bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-6 rounded text-lg">Download Project (.zip)</button>
                 </div>
             </main>
         </div>
@@ -103,69 +62,67 @@
         const NGROK_BASE_URL = "https://merited-blotchier-linn.ngrok-free.dev";
 
         // --- DOM ELEMENTS ---
-        const buildBtn = document.getElementById('build-btn');
-        const projectIdeaInput = document.getElementById('project-idea');
-        const repoUrlInput = document.getElementById('repo-url');
-        const githubTokenInput = document.getElementById('github-token');
-        const resultsContainer = document.getElementById('results-container');
-        const logContainer = document.getElementById('log-container');
-        const finalResult = document.getElementById('final-result');
-        const finalMessage = document.getElementById('final-message');
-        const finalRepoLink = document.getElementById('final-repo-link');
-        const errorMessage = document.getElementById('error-message');
-        const errorDetails = document.getElementById('error-details');
+        const sendBtn = document.getElementById('send-btn');
+        const messageInput = document.getElementById('message-input');
+        const chatWindow = document.getElementById('chat-window');
+        const finalResultContainer = document.getElementById('final-result');
+        const downloadZipBtn = document.getElementById('download-zip-btn');
+
+        let conversationHistory = [];
+        let generatedFiles = [];
 
         // --- UI HELPER FUNCTIONS ---
-        const addLog = (message) => {
-            const logLine = document.createElement('div');
-            logLine.textContent = message;
-            logLine.className = 'log-line info';
-            logContainer.appendChild(logLine);
-            logContainer.scrollTop = logContainer.scrollHeight;
-        };
-
-        const showError = (message) => {
-            errorDetails.textContent = message;
-            errorMessage.classList.remove('hidden');
-        };
-        
-        const resetUI = () => {
-            resultsContainer.classList.add('hidden');
-            finalResult.classList.add('hidden');
-            errorMessage.classList.add('hidden');
-            logContainer.innerHTML = '';
-            buildBtn.disabled = false;
-            buildBtn.innerHTML = '<svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg> Engage Alfred';
-        };
-
-        // --- CORE LOGIC ---
-        buildBtn.addEventListener('click', runFullBuild);
-
-        async function runFullBuild() {
-            resetUI();
-
-            const projectIdea = projectIdeaInput.value;
-            const repoUrl = repoUrlInput.value;
-            const githubToken = githubTokenInput.value;
-
-            if (!projectIdea || !repoUrl || !githubToken) {
-                alert('Please fill out all fields.');
-                return;
-            }
+        function addMessageToChat(sender, text) {
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('message', sender.toLowerCase());
             
-            buildBtn.disabled = true;
-            buildBtn.textContent = 'Working...';
-            resultsContainer.classList.remove('hidden');
-            addLog("Connecting to the AI Butler Service...");
+            const senderP = document.createElement('p');
+            senderP.classList.add('message-sender');
+            senderP.textContent = sender;
+            
+            const textP = document.createElement('p');
+            textP.textContent = text;
+            
+            messageDiv.appendChild(senderP);
+            messageDiv.appendChild(textP);
+            
+            chatWindow.appendChild(messageDiv);
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+        }
+        
+        // --- CORE LOGIC ---
+        sendBtn.addEventListener('click', handleSend);
+        messageInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+            }
+        });
+        downloadZipBtn.addEventListener('click', downloadProjectAsZip);
+
+        async function handleSend() {
+            const userMessage = messageInput.value.trim();
+            if (!userMessage) return;
+
+            addMessageToChat('You', userMessage);
+            conversationHistory.push({ role: 'user', content: userMessage });
+            messageInput.value = '';
+            sendBtn.disabled = true;
+            sendBtn.textContent = 'Thinking...';
+            
+            // Add a placeholder for Alfred's response
+            const alfredThinkingDiv = document.createElement('div');
+            alfredThinkingDiv.classList.add('message', 'alfred');
+            alfredThinkingDiv.innerHTML = `<p class="message-sender">Alfred</p><p class="thinking">...</p>`;
+            chatWindow.appendChild(alfredThinkingDiv);
+            chatWindow.scrollTop = chatWindow.scrollHeight;
 
             try {
-                const response = await fetch(`${NGROK_BASE_URL}/create-pull-request`, {
+                const response = await fetch(`${NGROK_BASE_URL}/build-project`, { // New endpoint name
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        repo_url: repoUrl,
-                        github_token: githubToken,
-                        project_idea: projectIdea
+                        history: conversationHistory
                     })
                 });
 
@@ -173,10 +130,10 @@
                     throw new Error(`Server responded with status: ${response.status}`);
                 }
 
-                // Manually read the streaming response
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
                 let buffer = '';
+                let alfredResponseText = '';
 
                 while (true) {
                     const { done, value } = await reader.read();
@@ -184,7 +141,6 @@
 
                     buffer += decoder.decode(value, { stream: true });
                     
-                    // Process buffer line by line for SSE messages
                     let boundary;
                     while ((boundary = buffer.indexOf('\n\n')) >= 0) {
                         const chunk = buffer.substring(0, boundary).trim();
@@ -194,34 +150,51 @@
                             const message = chunk.substring(5).trim();
                             
                             if (message.startsWith('[DONE]')) {
-                                const prUrl = message.substring(7).trim();
-                                addLog("Build successful! Pull request created.");
-                                finalMessage.textContent = "Your new software is ready for review, sir.";
-                                finalRepoLink.href = prUrl;
-                                finalResult.classList.remove('hidden');
-                                // We don't reset the UI so the user can see the logs and link
-                                buildBtn.disabled = false; // Just re-enable the button
-                                buildBtn.textContent = 'Run Again';
-                                return; // Exit the loop
+                                conversationHistory.push({ role: 'assistant', content: alfredResponseText });
+                                finalResultContainer.classList.remove('hidden');
+                                break;
                             } else if (message.startsWith('[ERROR]')) {
-                                const errorMsg = message.substring(8).trim();
-                                showError(errorMsg);
-                                buildBtn.disabled = false;
-                                buildBtn.textContent = 'Try Again';
-                                return; // Exit the loop
+                                alfredResponseText += `\nERROR: ${message.substring(8).trim()}`;
+                                break;
+                            } else if (message.startsWith('[FILE]')) {
+                                const fileJson = message.substring(7).trim();
+                                const fileData = JSON.parse(fileJson);
+                                generatedFiles.push(fileData);
+                                alfredResponseText += `\n[Generated File: ${fileData.path}]`;
                             } else {
-                                addLog(message);
+                                alfredResponseText += `\n${message}`;
                             }
+                            // Update the "thinking" message with real logs
+                            alfredThinkingDiv.querySelector('.thinking').textContent = alfredResponseText;
+                            chatWindow.scrollTop = chatWindow.scrollHeight;
                         }
                     }
                 }
 
             } catch (error) {
                 console.error('Fetch failed:', error);
-                showError(`Connection failed: ${error.message}. Please check the console and ensure the backend server is running.`);
-                buildBtn.disabled = false;
-                buildBtn.textContent = 'Try Again';
+                alfredThinkingDiv.querySelector('.thinking').textContent = `Connection failed: ${error.message}`;
+            } finally {
+                sendBtn.disabled = false;
+                sendBtn.textContent = 'Send';
             }
+        }
+
+        function downloadProjectAsZip() {
+            const zip = new JSZip();
+            generatedFiles.forEach(file => {
+                zip.file(file.path, file.content);
+            });
+
+            zip.generateAsync({ type: "blob" })
+                .then(function(content) {
+                    const link = document.createElement('a');
+                    link.href = URL.createObjectURL(content);
+                    link.download = "alfred-generated-project.zip";
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                });
         }
     </script>
 </body>
