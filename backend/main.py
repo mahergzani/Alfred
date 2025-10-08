@@ -228,10 +228,16 @@ async def create_pull_request(request: PRRequest):
         raise HTTPException(status_code=400, detail="Invalid GitHub repository URL format.")
 
     owner, repo = get_repo_owner_and_name(request.repo_url)
+
+    logging.info(f"--> [Debug] Parsed owner='{owner}', repo='{repo}'")
+
     if not owner or not repo: raise HTTPException(status_code=400, detail="Invalid GitHub repo URL.")
     
     with tempfile.TemporaryDirectory() as temp_dir:
         try:
+
+            logging.info(f"--> [Step 0/7] Received request for repository URL: '{request.repo_url}'")
+
             repo_path = os.path.join(temp_dir, repo)
             auth_repo_url = f"https://{request.github_token}@github.com/{owner}/{repo}.git"
             
