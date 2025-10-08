@@ -1,6 +1,7 @@
 # main.py
 # This script orchestrates a team of AI agents to build or update software conversationally.
 
+import uuid
 from datetime import datetime
 from fastapi.responses import StreamingResponse
 import asyncio
@@ -59,6 +60,7 @@ class ChatMessage(BaseModel):
 
 class BuildRequest(BaseModel):
     history: List[ChatMessage]
+    session_id: str = None
 
 # --- Agent 1: Product Manager ---
 class SpecRequest(BaseModel):
@@ -149,6 +151,13 @@ async def build_project(request: BuildRequest):
         generated_files: Dict[str, str] = {}
 
         async def log_and_queue(message, level=logging.INFO, is_raw=False):
+            
+            # --- TEMPORARY TEST ---
+            # Only process raw messages ([FILE], [DONE], etc.) and ignore all others.
+            if not is_raw:
+                return 
+            # --- END TEST ---
+
             # Log to console for backend debugging
             if not is_raw:
                 if level == logging.INFO: logging.info(message)
@@ -162,6 +171,19 @@ async def build_project(request: BuildRequest):
 
         async def run_build():
             try:
+                # --- NEW: SESSION AND FOLDER HANDLING ---
+                if session_id:
+                    project_path = os.path.join("project_builds", session_id)
+                    await log_and_queue(f"Continuing session: {session_id}")
+                else:
+                    session_id = str(uuid.uuid4())
+                    project_path = os.path.join("project_builds", session_id)
+                    os.makedirs(project_path, exist_ok=True)
+                    await log_and_queue(f"Starting new session: {session_id}")
+                    # Send the new session ID to the client
+                    await log_and_queue(f"[SESSION_ID]{session_id}", is_raw=True)
+                # --- END SESSION HANDLING ---
+
                 await log_and_queue("--- [START] AI Butler Service Request ---")
                 
                 # --- NEW: Create a directory for QA reports ---
@@ -198,9 +220,14 @@ async def build_project(request: BuildRequest):
                     for attempt in range(max_retries):
                         await log_and_queue(f"        - Attempt {attempt + 1}/{max_retries}: Engineer writing code...")
                         eng_model = genai.GenerativeModel('gemini-2.5-flash-preview-05-20', system_instruction=SOFTWARE_ENGINEER_PROMPT)
-                        eng_prompt = f"File Path: {file_path}\nTask: {task}"
-                        if feedback: eng_prompt += f"\n\IMPORTANT: Your previous attempt was rejected. You MUST fix the following issues:\n{feedback}"
-                        
+                        eng_prompt = f"""File Path: {file_path}
+                        Task: {task}"""
+                        if feedback:
+                            eng_prompt += f"""
+
+                        IMPORTANT: Your previous attempt was rejected. You MUST fix the following issues:
+                        {feedback}"""
+    
                         code_response = await eng_model.generate_content_async(eng_prompt, request_options={"timeout": 180})
                         generated_code = code_response.text.strip()
                         if generated_code.startswith("```") and generated_code.endswith("```"):
@@ -223,8 +250,17 @@ async def build_project(request: BuildRequest):
                         
                         if review and review.get("approved"):
                             await log_and_queue(f"        - Attempt {attempt + 1}/{max_retries}: QA Approved!")
+
+                            # --- NEW: SAVE FILE TO DISK ---
+                            full_disk_path = os.path.join(project_path, file_path)
+                            os.makedirs(os.path.dirname(full_disk_path), exist_ok=True)
+                            with open(full_disk_path, "w") as f:
+                                f.write(generated_code)
+                            
+                            # Stream the file to the frontend for the zip download
                             file_data_json = json.dumps({"path": file_path, "content": generated_code})
                             await log_and_queue(f"[FILE]{file_data_json}", is_raw=True)
+                            
                             approved = True
                             break
                         else:
@@ -247,6 +283,8 @@ async def build_project(request: BuildRequest):
                 await log_and_queue("<-- [Step 3/4] All files generated successfully.")
                 await log_and_queue("--> [Step 4/4] Build complete. Ready for download.")
                 await log_and_queue("[DONE]", is_raw=True)
+                # Add a small delay to ensure the [DONE] message is sent before the stream closes.
+                await asyncio.sleep(0.1)
 
             except Exception as e:
                 error_detail = str(e)

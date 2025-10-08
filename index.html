@@ -68,6 +68,7 @@
         const finalResultContainer = document.getElementById('final-result');
         const downloadZipBtn = document.getElementById('download-zip-btn');
 
+        let sessionId = null;
         let conversationHistory = [];
         let generatedFiles = [];
 
@@ -122,7 +123,8 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        history: conversationHistory
+                        history: conversationHistory,
+                        session_id: sessionId
                     })
                 });
 
@@ -149,7 +151,10 @@
                         if (chunk.startsWith('data:')) {
                             const message = chunk.substring(5).trim();
                             
-                            if (message.startsWith('[DONE]')) {
+                            if (message.startsWith('[SESSION_ID]')) {
+                                sessionId = message.substring(12).trim();
+                                console.log("Session started:", sessionId);
+                            } else if (message.startsWith('[DONE]')) {
                                 conversationHistory.push({ role: 'assistant', content: alfredResponseText });
                                 finalResultContainer.classList.remove('hidden');
                                 break;
