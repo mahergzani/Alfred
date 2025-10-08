@@ -1,6 +1,7 @@
 # main.py
 # This script orchestrates a team of AI agents to build or update software conversationally.
 
+from datetime import datetime
 from fastapi.responses import StreamingResponse
 import asyncio
 import uvicorn
@@ -147,17 +148,24 @@ async def build_project(request: BuildRequest):
         log_queue = asyncio.Queue()
         generated_files: Dict[str, str] = {}
 
-        async def log_and_queue(message, level=logging.INFO):
-            if level == logging.INFO: logging.info(message)
-            elif level == logging.WARNING: logging.warning(message)
-            elif level == logging.ERROR: logging.error(message)
+        async def log_and_queue(message, level=logging.INFO, is_raw=False):
+            # Log to console for backend debugging
+            if not is_raw:
+                if level == logging.INFO: logging.info(message)
+                elif level == logging.WARNING: logging.warning(message)
+                elif level == logging.ERROR: logging.error(message)
             
+            # Put the message in the queue for the browser, wrapping it in the SSE format
             log_queue.put_nowait(f"data: {message}\n\n")
+            # Add a small delay to allow the message to be sent and the UI to update
             await asyncio.sleep(0.01)
 
         async def run_build():
             try:
                 await log_and_queue("--- [START] AI Butler Service Request ---")
+                
+                # --- NEW: Create a directory for QA reports ---
+                os.makedirs("qa_reports", exist_ok=True)
                 
                 # Agent 1: Product Manager
                 await log_and_queue("--> [Step 1/4] Engaging Product Manager...")
@@ -203,7 +211,6 @@ async def build_project(request: BuildRequest):
                         qa_model = genai.GenerativeModel('gemini-2.5-flash-preview-05-20', system_instruction=QA_SECURITY_PROMPT)
                         qa_prompt = f"File to Review: {file_path}\n\nCode:\n{generated_code}"
                         
-                        # QA review with JSON retry logic
                         review = None
                         for qa_attempt in range(max_retries):
                             try:
@@ -216,13 +223,22 @@ async def build_project(request: BuildRequest):
                         
                         if review and review.get("approved"):
                             await log_and_queue(f"        - Attempt {attempt + 1}/{max_retries}: QA Approved!")
-                            generated_files[file_path] = generated_code
-                            file_data = json.dumps({"path": file_path, "content": generated_code})
-                            await log_queue.put(f"data: [FILE]{file_data}\n\n")
+                            file_data_json = json.dumps({"path": file_path, "content": generated_code})
+                            await log_and_queue(f"[FILE]{file_data_json}", is_raw=True)
                             approved = True
                             break
                         else:
                             feedback = review.get("feedback", "No feedback provided.")
+                            
+                            # --- NEW: Save the full QA report to a file ---
+                            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                            safe_file_path = file_path.replace('/', '_').replace('\\', '_')
+                            report_filename = f"qa_reports/qa_report_{timestamp}_{safe_file_path}_attempt_{attempt + 1}.txt"
+                            with open(report_filename, "w") as f:
+                                f.write(feedback)
+                            await log_and_queue(f"        - Full QA report saved to {report_filename}", level=logging.INFO)
+                            
+                            # This is the original truncated log for the live view
                             await log_and_queue(f"        - Attempt {attempt + 1}/{max_retries}: QA Rejected. Feedback: {feedback[:200]}...", level=logging.WARNING)
 
                     if not approved:
@@ -230,12 +246,12 @@ async def build_project(request: BuildRequest):
                 
                 await log_and_queue("<-- [Step 3/4] All files generated successfully.")
                 await log_and_queue("--> [Step 4/4] Build complete. Ready for download.")
-                await log_queue.put("data: [DONE]\n\n")
+                await log_and_queue("[DONE]", is_raw=True)
 
             except Exception as e:
                 error_detail = str(e)
                 await log_and_queue(f"--- [END] AI Butler Service Request FAILED ---\nERROR: {error_detail}", level=logging.ERROR)
-                await log_queue.put(f"data: [ERROR] {error_detail}\n\n")
+                await log_and_queue(f"[ERROR] {error_detail}", is_raw=True)
             finally:
                 await log_queue.put(None)
 
