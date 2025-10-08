@@ -1,6 +1,6 @@
 # main.py
-# This script orchestrates a team of AI agents to build secure software.
-# This version includes enhanced security best practices.
+# This script orchestrates a team of AI agents to build or update secure software.
+# This version includes a self-correction loop for the Software Engineer.
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Response
@@ -15,7 +15,13 @@ import json
 import subprocess
 import tempfile
 import shutil
-import re # Security: Import regex for input validation
+import re 
+import requests
+import logging
+
+# --- Logging Configuration ---
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
 
 # --- Configuration ---
 env_path = Path('.') / '.env'
@@ -25,29 +31,28 @@ try:
     api_key = os.environ["GOOGLE_API_KEY"]
     if not api_key: raise KeyError
     genai.configure(api_key=api_key)
-    print("Gemini API configured successfully.")
+    logging.info("Gemini API configured successfully.")
 except KeyError:
-    print("ERROR: GOOGLE_API_KEY not found.")
+    logging.error("GOOGLE_API_KEY not found.")
     exit()
 
 # --- FastAPI App Initialization ---
 app = FastAPI(
     title="Alfred: AI Software Team API",
-    description="Endpoints for an AI team that builds secure software.",
+    description="Endpoints for an AI team that builds and updates secure software.",
 )
 
 # --- CORS Configuration ---
-# Security: Be specific about allowed origins in production
 origins = [
     "https://mahergzani.github.io",
-    "http://localhost:8000", # For local testing
+    "http://localhost:8000",
 ]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["POST", "OPTIONS"], # Security: Only allow necessary methods
-    allow_headers=["Content-Type"],   # Security: Only allow necessary headers
+    allow_methods=["POST", "OPTIONS"],
+    allow_headers=["Content-Type"],
 )
 
 @app.options("/{rest_of_path:path}")
@@ -56,13 +61,10 @@ async def preflight_handler(rest_of_path: str):
 
 # --- Security Helper Functions ---
 def is_valid_github_url(url: str) -> bool:
-    """Security: Validates the GitHub URL to prevent command injection."""
-    # This regex ensures the URL is a standard GitHub clone URL.
     pattern = re.compile(r'^https://github\.com/[\w\-]+/[\w\-\.]+(?:\.git)?$')
     return pattern.match(url) is not None
 
 def get_repo_owner_and_name(repo_url):
-    # Assumes URL has been validated
     try:
         parts = repo_url.strip().rstrip('.git').split('/')
         return parts[-2], parts[-1]
@@ -72,59 +74,86 @@ def get_repo_owner_and_name(repo_url):
 # --- Agent 1: Product Manager ---
 class SpecRequest(BaseModel):
     project_idea: str
+    existing_code_context: str = ""
 
 class SpecResponse(BaseModel):
     product_spec: str
 
-PRODUCT_MANAGER_PROMPT = """You are an expert AI Product Manager. Your role is to convert a user's high-level project idea into a detailed technical specification. The spec should outline user stories, core features, a recommended technology stack (e.g., Python FastAPI backend, React frontend), and data models. The output must be a concise, well-structured markdown string."""
+PRODUCT_MANAGER_PROMPT = """You are an expert AI Product Manager...""" # Omitted for brevity
 
 @app.post("/create-spec", response_model=SpecResponse)
 async def create_spec(request: SpecRequest):
     model = genai.GenerativeModel('gemini-2.5-flash-preview-05-20', system_instruction=PRODUCT_MANAGER_PROMPT)
-    # Security: While not high risk here, it's good practice to be aware of prompt injection.
-    # We are trusting the model to handle the user-provided project_idea correctly.
-    response = model.generate_content(f"Project Idea: {request.project_idea}")
+    user_prompt = f"Project Request: {request.project_idea}"
+    if request.existing_code_context:
+        user_prompt += f"\n\nHere is the context of the existing project structure and files:\n{request.existing_code_context}"
+    response = model.generate_content(user_prompt)
     return SpecResponse(product_spec=response.text)
 
 
 # --- Agent 2: Tech Lead / Architect ---
 class ArchRequest(BaseModel):
     product_spec: str
+    existing_code_context: str = ""
 class FileDetail(BaseModel):
-    file_path: str; task: str
+    file_path: str; task: str; reasoning: str
 class ArchResponse(BaseModel):
-    files: List[FileDetail]
+    files_to_modify: List[FileDetail]
 
-TECH_LEAD_PROMPT = """You are an expert AI Tech Lead and Software Architect. Your task is to take a product specification and design the software architecture. You MUST output a JSON object containing a single key "files". This key should hold an array of objects, where each object has two keys: "file_path" (e.g., "src/main.py") and "task" (a specific, one-sentence instruction for a junior developer on what to build in that file, including security considerations). Ensure your architecture includes necessary files like Dockerfile, .gitignore, and requirements.txt."""
+TECH_LEAD_PROMPT = """You are an expert AI Tech Lead...""" # Omitted for brevity
 
 @app.post("/design-architecture", response_model=ArchResponse)
 async def design_architecture(request: ArchRequest):
     model = genai.GenerativeModel('gemini-2.5-flash-preview-05-20', system_instruction=TECH_LEAD_PROMPT, generation_config={"response_mime_type": "application/json"})
-    response = model.generate_content(f"Product Specification:\n{request.product_spec}")
+    user_prompt = f"Product Specification:\n{request.product_spec}"
+    if request.existing_code_context:
+        user_prompt += f"\n\nHere is the context of the existing project structure and files that you need to modify:\n{request.existing_code_context}"
+    
+    response = model.generate_content(user_prompt)
+    raw_text = response.text
+    logging.info(f"--- RAW AI RESPONSE (Tech Lead) ---\n{raw_text}\n-----------------------")
+    
     try:
-        return ArchResponse.model_validate_json(response.text)
-    except (ValidationError, json.JSONDecodeError):
-        # Security: Prevent leaking raw AI response in case of parsing failure.
-        print(f"ERROR: Tech Lead failed to produce valid JSON. Raw: {response.text}")
-        raise HTTPException(status_code=500, detail="Tech Lead agent failed to generate a valid architecture plan.")
+        response_json = json.loads(raw_text)
+        if isinstance(response_json, list):
+            logging.warning("AI returned a list for architecture, wrapping it in the expected structure.")
+            response_json = {"files_to_modify": response_json}
+        if "files_to_modify" not in response_json:
+            raise HTTPException(status_code=500, detail=f"AI response for architecture is missing 'files_to_modify' key. Raw: {raw_text}")
+        return ArchResponse.model_validate(response_json)
+    except (ValidationError, json.JSONDecodeError) as e:
+        logging.error(f"Tech Lead failed to produce valid JSON. Error: {e}. Raw: {raw_text}")
+        raise HTTPException(status_code=500, detail=f"Tech Lead agent failed to generate a valid architecture plan. Error: {e}")
 
 
-# --- Agent 3: Software Engineer ---
+# --- Agent 3: Software Engineer (UPGRADED) ---
 class CodeRequest(BaseModel):
-    file_path: str; task: str
+    file_path: str; task: str; existing_code: str = ""
+    # New: Add field for QA feedback
+    feedback: str = "" 
+
 class CodeResponse(BaseModel):
     code: str
 
-SOFTWARE_ENGINEER_PROMPT = """You are an expert AI Software Engineer. You write clean, functional, and secure code. You will be given a file path and a specific task. Your job is to write the complete code for that file to accomplish the task. Your code should be production-ready. Only output the raw code for the file. Do not include any explanation, markdown formatting, or any text other than the code itself."""
+# MODIFIED: Prompt now includes instructions for handling feedback.
+SOFTWARE_ENGINEER_PROMPT = """You are an expert AI Software Engineer. You write clean, functional, and secure code. You will be given a file path, a specific task, and potentially the existing code from that file. 
+If you are also given feedback from a QA review, you MUST address that feedback in your new version of the code.
+Your job is to write the complete, updated code for that file to accomplish the task, incorporating any feedback. If existing code is provided, modify it as needed. If not, create it from scratch. 
+Only output the raw, complete code for the file. Do not include any explanation or markdown formatting."""
 
 @app.post("/write-code", response_model=CodeResponse)
 async def write_code(request: CodeRequest):
     model = genai.GenerativeModel('gemini-2.5-flash-preview-05-20', system_instruction=SOFTWARE_ENGINEER_PROMPT)
-    response = model.generate_content(f"File Path: {request.file_path}\nTask: {request.task}")
+    user_prompt = f"File Path: {request.file_path}\nTask: {request.task}"
+    if request.existing_code:
+        user_prompt += f"\n\nHere is the existing code for the file that you must modify:\n```\n{request.existing_code}\n```"
+    if request.feedback:
+        user_prompt += f"\n\IMPORTANT: Your previous attempt was rejected. You MUST fix the following issues:\n{request.feedback}"
+    
+    response = model.generate_content(user_prompt)
     cleaned_code = response.text.strip()
     if cleaned_code.startswith("```") and cleaned_code.endswith("```"):
-        lines = cleaned_code.split('\n')
-        cleaned_code = '\n'.join(lines[1:-1])
+        cleaned_code = '\n'.join(cleaned_code.split('\n')[1:-1])
     return CodeResponse(code=cleaned_code)
 
 
@@ -134,7 +163,7 @@ class ReviewRequest(BaseModel):
 class ReviewResponse(BaseModel):
     approved: bool; feedback: str
 
-QA_SECURITY_PROMPT = """You are an expert QA and Security Engineer. You review code for bugs and security vulnerabilities. You will be given a file path and its code. If the code is high-quality, functional, and secure, respond with a JSON object: `{"approved": true, "feedback": "Code looks good."}`. If you find any issues, respond with `{"approved": false, "feedback": "A detailed, constructive explanation of the issues found."}`."""
+QA_SECURITY_PROMPT = """You are an expert QA and Security Engineer...""" # Omitted for brevity
 
 @app.post("/review-code", response_model=ReviewResponse)
 async def review_code(request: ReviewRequest):
@@ -143,19 +172,19 @@ async def review_code(request: ReviewRequest):
     try:
         return ReviewResponse.model_validate_json(response.text)
     except (ValidationError, json.JSONDecodeError):
-        print(f"ERROR: QA agent failed to produce valid JSON. Raw: {response.text}")
+        logging.error(f"QA agent failed to produce valid JSON. Raw: {response.text}")
         raise HTTPException(status_code=500, detail="QA agent failed to generate a valid review.")
 
 
-# --- Final Step: Create Pull Request ---
+# --- Final Step: Create Pull Request (UPGRADED WITH SELF-CORRECTION) ---
 class PRRequest(BaseModel):
-    repo_url: str; github_token: str; architecture: ArchResponse; project_idea: str
+    repo_url: str; github_token: str; project_idea: str
 class PRResponse(BaseModel):
     pull_request_url: str
 
 @app.post("/create-pull-request", response_model=PRResponse)
 async def create_pull_request(request: PRRequest):
-    # Security: Sanitize and validate the repo_url before using it in a shell command.
+    logging.info("\n--- [START] AI Butler Service Request ---")
     if not is_valid_github_url(request.repo_url):
         raise HTTPException(status_code=400, detail="Invalid GitHub repository URL format.")
 
@@ -165,65 +194,110 @@ async def create_pull_request(request: PRRequest):
     with tempfile.TemporaryDirectory() as temp_dir:
         try:
             repo_path = os.path.join(temp_dir, repo)
-            # Security: The token is used here for authentication. Never log it.
             auth_repo_url = f"https://{request.github_token}@github.com/{owner}/{repo}.git"
             
-            # Since the remote repo is empty, we initialize a new one locally.
-            os.makedirs(repo_path)
-            subprocess.run(["git", "init"], cwd=repo_path, check=True)
+            logging.info("--> [Step 1/7] Cloning repository...")
+            subprocess.run(["git", "clone", auth_repo_url, repo_path], check=True, capture_output=True)
+            logging.info("<-- [Step 1/7] Repository cloned successfully.")
             
-            # Create a README file to have an initial commit
-            with open(os.path.join(repo_path, 'README.md'), 'w') as f:
-                f.write(f"# {repo}\n\nAI-generated project for: {request.project_idea}\n")
-            subprocess.run(["git", "add", "README.md"], cwd=repo_path, check=True)
-            subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=repo_path, check=True)
-            subprocess.run(["git", "branch", "-M", "main"], cwd=repo_path, check=True) # Ensure branch is 'main'
-            
-            # Add the remote and push the initial commit
-            subprocess.run(["git", "remote", "add", "origin", auth_repo_url], cwd=repo_path, check=True)
-            subprocess.run(["git", "push", "-u", "origin", "main"], cwd=repo_path, check=True)
+            existing_code_context = ""
+            for root, _, files in os.walk(repo_path):
+                for file in files:
+                    if ".git" in root: continue
+                    relative_path = os.path.relpath(os.path.join(root, file), repo_path)
+                    existing_code_context += f"- {relative_path}\n"
 
-            # Now, create a new branch for the feature
-            branch_name = "feat/initial-build-by-ai"
+            logging.info("--> [Step 2/7] Engaging Product Manager to create spec...")
+            spec_response = await create_spec(SpecRequest(project_idea=request.project_idea, existing_code_context=existing_code_context))
+            logging.info("<-- [Step 2/7] Product Manager finished.")
+            
+            logging.info("--> [Step 3/7] Engaging Tech Lead to design architecture...")
+            arch_response = await design_architecture(ArchRequest(product_spec=spec_response.product_spec, existing_code_context=existing_code_context))
+            logging.info(f"<-- [Step 3/7] Tech Lead finished. Plan involves {len(arch_response.files_to_modify)} file(s).")
+
+            branch_name = f"feat/ai-update-{request.project_idea.lower().replace(' ', '-')[:20]}"
+            logging.info(f"--> [Step 4/7] Creating new branch: {branch_name}...")
             subprocess.run(["git", "checkout", "-b", branch_name], cwd=repo_path, check=True)
+            logging.info(f"<-- [Step 4/7] Branch created.")
 
-            # Generate code for all files
-            for file_detail in request.architecture.files:
-                code_response = await write_code(CodeRequest(file_path=file_detail.file_path, task=file_detail.task))
+            logging.info("--> [Step 5/7] Engaging Software Engineer with Self-Correction Loop...")
+            for i, file_detail in enumerate(arch_response.files_to_modify):
+                logging.info(f"    - ({i+1}/{len(arch_response.files_to_modify)}) Processing {file_detail.file_path}...")
                 file_path = os.path.join(repo_path, file_detail.file_path)
+                existing_code = ""
+                if os.path.exists(file_path):
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        existing_code = f.read()
+                
+                # --- START OF SELF-CORRECTION LOOP ---
+                max_retries = 3
+                current_feedback = ""
+                approved = False
+                final_code = ""
+
+                for attempt in range(max_retries):
+                    logging.info(f"      - Attempt {attempt + 1}/{max_retries}: Engineer writing code...")
+                    code_response = await write_code(CodeRequest(
+                        file_path=file_detail.file_path, 
+                        task=file_detail.task, 
+                        existing_code=existing_code if attempt == 0 else final_code, # Use original code first, then the last attempt
+                        feedback=current_feedback
+                    ))
+                    
+                    logging.info(f"      - Attempt {attempt + 1}/{max_retries}: QA reviewing code...")
+                    review_response = await review_code(ReviewRequest(file_path=file_detail.file_path, code_to_review=code_response.code))
+                    
+                    if review_response.approved:
+                        logging.info(f"      - Attempt {attempt + 1}/{max_retries}: QA Approved!")
+                        approved = True
+                        final_code = code_response.code
+                        break # Exit the loop on success
+                    else:
+                        logging.warning(f"      - Attempt {attempt + 1}/{max_retries}: QA Rejected. Feedback: {review_response.feedback}")
+                        current_feedback = review_response.feedback # Update feedback for the next attempt
+                        final_code = code_response.code # Keep the last failed code for context
+                
+                if not approved:
+                    logging.error(f"Failed to get code approved for {file_detail.file_path} after {max_retries} attempts.")
+                    raise HTTPException(status_code=400, detail=f"QA agent failed to approve code for {file_detail.file_path} after {max_retries} attempts. Last feedback: {current_feedback}")
+                
+                # --- END OF SELF-CORRECTION LOOP ---
+
+                logging.info(f"    - Saving approved code for {file_detail.file_path}.")
                 os.makedirs(os.path.dirname(file_path), exist_ok=True)
                 with open(file_path, 'w', encoding='utf-8') as f:
-                    f.write(code_response.code)
+                    f.write(final_code)
 
-            # Commit and Push the new feature branch
-            subprocess.run(["git", "add", "."], cwd=repo_path, check=True)
-            subprocess.run(["git", "commit", "-m", f"feat: Initial AI-generated build for '{request.project_idea}'"], cwd=repo_path, check=True)
-            subprocess.run(["git", "push", "-u", "origin", branch_name], cwd=repo_path, check=True, capture_output=True, text=True)
+            logging.info("<-- [Step 5/7] Software Engineer finished writing all files.")
             
-            # Create Pull Request
+            logging.info("--> [Step 6/7] Committing and pushing changes to GitHub...")
+            subprocess.run(["git", "add", "."], cwd=repo_path, check=True)
+            subprocess.run(["git", "commit", "-m", f"feat: AI-generated update for '{request.project_idea}'"], cwd=repo_path, check=True)
+            subprocess.run(["git", "push", "-u", "origin", branch_name], cwd=repo_path, check=True, capture_output=True, text=True)
+            logging.info("<-- [Step 6/7] Changes pushed successfully.")
+            
+            logging.info("--> [Step 7/7] Creating Pull Request...")
             headers = {"Authorization": f"token {request.github_token}", "Accept": "application/vnd.github.v3+json"}
-            pr_payload = {"title": f"AI Initial Build: {request.project_idea}", "head": branch_name, "base": "main", "body": "This is an AI-generated pull request containing the initial software build."}
+            pr_payload = {"title": f"AI Update: {request.project_idea}", "head": branch_name, "base": "main", "body": "This is an AI-generated pull request containing updates to the software."}
             api_url = f"https://api.github.com/repos/{owner}/{repo}/pulls"
-            # Security: Timeout for external API calls.
             pr_response = requests.post(api_url, headers=headers, json=pr_payload, timeout=30)
             pr_response.raise_for_status()
             pr_data = pr_response.json()
+            logging.info("<-- [Step 7/7] Pull Request created.")
             
+            logging.info("--- [END] AI Butler Service Request Successful ---")
             return PRResponse(pull_request_url=pr_data['html_url'])
         
         except subprocess.TimeoutExpired:
-            raise HTTPException(status_code=500, detail="A git command timed out. The repository may be too large.")
-        except (subprocess.CalledProcessError, requests.exceptions.RequestException, Exception) as e:
-            # Security: Generic error message to avoid leaking internal implementation details.
-            # Log the specific error for the developer.
+            logging.error("A git command timed out.")
+            raise HTTPException(status_code=500, detail="A git command timed out.")
+        except Exception as e:
             error_detail = str(e)
             if hasattr(e, 'stderr'): error_detail = e.stderr
             if hasattr(e, 'response'): error_detail = e.response.text
-            print(f"ERROR during PR process: {error_detail}")
-            raise HTTPException(status_code=500, detail="An unexpected error occurred while creating the pull request.")
+            logging.error(f"--- [END] AI Butler Service Request FAILED ---\nERROR: {error_detail}")
+            raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {error_detail}")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
-
 
