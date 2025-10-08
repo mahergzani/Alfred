@@ -115,8 +115,6 @@
         const errorMessage = document.getElementById('error-message');
         const errorDetails = document.getElementById('error-details');
 
-        let eventSource; // To hold our connection
-
         // --- UI HELPER FUNCTIONS ---
         const addLog = (message) => {
             const logLine = document.createElement('div');
@@ -132,15 +130,12 @@
         };
         
         const resetUI = () => {
-            logContainer.innerHTML = '';
             resultsContainer.classList.add('hidden');
             finalResult.classList.add('hidden');
             errorMessage.classList.add('hidden');
+            logContainer.innerHTML = '';
             buildBtn.disabled = false;
             buildBtn.innerHTML = '<svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg> Engage Alfred';
-            if (eventSource) {
-                eventSource.close();
-            }
         };
 
         // --- CORE LOGIC ---
@@ -163,44 +158,70 @@
             resultsContainer.classList.remove('hidden');
             addLog("Connecting to the AI Butler Service...");
 
-            // Use EventSource to connect to our streaming endpoint
-            eventSource = new EventSource(`${NGROK_BASE_URL}/create-pull-request`, {
-                method: 'POST', // NOTE: EventSource with POST is not standard, this is a workaround
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    repo_url: repoUrl,
-                    github_token: githubToken,
-                    project_idea: projectIdea
-                })
-            });
+            try {
+                const response = await fetch(`${NGROK_BASE_URL}/create-pull-request`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        repo_url: repoUrl,
+                        github_token: githubToken,
+                        project_idea: projectIdea
+                    })
+                });
 
-            eventSource.onmessage = function(event) {
-                const message = event.data;
-
-                if (message.startsWith('[DONE]')) {
-                    const prUrl = message.substring(7); // Get the URL part
-                    addLog("Build successful! Pull request created.");
-                    finalMessage.textContent = "Your new software is ready for review, sir.";
-                    finalRepoLink.href = prUrl;
-                    finalResult.classList.remove('hidden');
-                    eventSource.close();
-                    resetUI(); // Or just re-enable the button
-                } else if (message.startsWith('[ERROR]')) {
-                    const errorMsg = message.substring(8);
-                    showError(errorMsg);
-                    eventSource.close();
-                    resetUI();
-                } else {
-                    addLog(message);
+                if (!response.ok) {
+                    throw new Error(`Server responded with status: ${response.status}`);
                 }
-            };
 
-            eventSource.onerror = function(error) {
-                console.error('EventSource failed:', error);
-                showError('Connection to the server was lost. Please check the console and try again.');
-                eventSource.close();
-                resetUI();
-            };
+                // Manually read the streaming response
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    
+                    // Process buffer line by line for SSE messages
+                    let boundary;
+                    while ((boundary = buffer.indexOf('\n\n')) >= 0) {
+                        const chunk = buffer.substring(0, boundary).trim();
+                        buffer = buffer.substring(boundary + 2);
+
+                        if (chunk.startsWith('data:')) {
+                            const message = chunk.substring(5).trim();
+                            
+                            if (message.startsWith('[DONE]')) {
+                                const prUrl = message.substring(7).trim();
+                                addLog("Build successful! Pull request created.");
+                                finalMessage.textContent = "Your new software is ready for review, sir.";
+                                finalRepoLink.href = prUrl;
+                                finalResult.classList.remove('hidden');
+                                // We don't reset the UI so the user can see the logs and link
+                                buildBtn.disabled = false; // Just re-enable the button
+                                buildBtn.textContent = 'Run Again';
+                                return; // Exit the loop
+                            } else if (message.startsWith('[ERROR]')) {
+                                const errorMsg = message.substring(8).trim();
+                                showError(errorMsg);
+                                buildBtn.disabled = false;
+                                buildBtn.textContent = 'Try Again';
+                                return; // Exit the loop
+                            } else {
+                                addLog(message);
+                            }
+                        }
+                    }
+                }
+
+            } catch (error) {
+                console.error('Fetch failed:', error);
+                showError(`Connection failed: ${error.message}. Please check the console and ensure the backend server is running.`);
+                buildBtn.disabled = false;
+                buildBtn.textContent = 'Try Again';
+            }
         }
     </script>
 </body>
