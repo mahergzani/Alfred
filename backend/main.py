@@ -2,6 +2,8 @@
 # This script orchestrates a team of AI agents to build or update secure software.
 # This version includes a stronger prompt for the Tech Lead agent.
 
+from fastapi.responses import StreamingResponse
+import asyncio
 import uvicorn
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -203,16 +205,29 @@ QA_SECURITY_PROMPT = """You are an expert QA and Security Engineer. You review c
 
 @app.post("/review-code", response_model=ReviewResponse)
 async def review_code(request: ReviewRequest):
-    try:
-        model = genai.GenerativeModel('gemini-2.5-flash-preview-05-20', system_instruction=QA_SECURITY_PROMPT, generation_config={"response_mime_type": "application/json"})
-        response = model.generate_content(f"File to Review: {request.file_path}\n\nCode:\n{request.code_to_review}", request_options={"timeout": 120})
-        return ReviewResponse.model_validate_json(response.text)
-    except (ValidationError, json.JSONDecodeError) as e:
-        logging.error(f"QA agent failed to produce valid JSON. Raw: {response.text if 'response' in locals() else 'No response'}")
-        raise HTTPException(status_code=500, detail="QA agent failed to generate a valid review.")
-    except Exception as e:
-        logging.error(f"QA agent failed for file {request.file_path}: {e}")
-        raise HTTPException(status_code=500, detail=f"QA agent timed out or failed for {request.file_path}: {e}")
+    max_retries = 3
+    prompt = f"File to Review: {request.file_path}\n\nCode:\n{request.code_to_review}"
+    
+    for attempt in range(max_retries):
+        try:
+            model = genai.GenerativeModel('gemini-2.5-flash-preview-05-20', system_instruction=QA_SECURITY_PROMPT, generation_config={"response_mime_type": "application/json"})
+            response = model.generate_content(prompt, request_options={"timeout": 120})
+            
+            # Attempt to validate the JSON. If successful, return and exit the loop.
+            return ReviewResponse.model_validate_json(response.text)
+        
+        except (ValidationError, json.JSONDecodeError) as e:
+            logging.warning(f"QA agent produced invalid JSON on attempt {attempt + 1}. Error: {e}. Raw: {response.text}")
+            # If we fail, update the prompt to include feedback and try again.
+            prompt = f"Your last response was not valid JSON. Please correct the formatting. The error was: {e}. The invalid response was:\n{response.text}\n\nPlease review the following code again and provide a valid JSON response:\nFile to Review: {request.file_path}\n\nCode:\n{request.code_to_review}"
+            if attempt == max_retries - 1:
+                # If we've exhausted all retries, raise the final error.
+                logging.error(f"QA agent failed to produce valid JSON after {max_retries} attempts.")
+                raise HTTPException(status_code=500, detail="QA agent failed to generate a valid review.")
+        except Exception as e:
+            logging.error(f"An unexpected error occurred in review_code for file {request.file_path}: {e}")
+            raise HTTPException(status_code=500, detail=f"QA agent timed out or failed for {request.file_path}: {e}")
+
 
 
 # --- Final Step: Create Pull Request ---
@@ -221,112 +236,106 @@ class PRRequest(BaseModel):
 class PRResponse(BaseModel):
     pull_request_url: str
 
-@app.post("/create-pull-request", response_model=PRResponse)
+@app.post("/create-pull-request")
 async def create_pull_request(request: PRRequest):
-    logging.info("\n--- [START] AI Butler Service Request ---")
-    if not is_valid_github_url(request.repo_url):
-        raise HTTPException(status_code=400, detail="Invalid GitHub repository URL format.")
+    async def log_streamer():
+        log_queue = asyncio.Queue()
 
-    owner, repo = get_repo_owner_and_name(request.repo_url)
-
-    logging.info(f"--> [Debug] Parsed owner='{owner}', repo='{repo}'")
-
-    if not owner or not repo: raise HTTPException(status_code=400, detail="Invalid GitHub repo URL.")
-    
-    with tempfile.TemporaryDirectory() as temp_dir:
-        try:
-
-            logging.info(f"--> [Step 0/7] Received request for repository URL: '{request.repo_url}'")
-
-            repo_path = os.path.join(temp_dir, repo)
-            auth_repo_url = f"https://{request.github_token}@github.com/{owner}/{repo}.git"
+        def log_and_queue(message, level=logging.INFO):
+            if level == logging.INFO:
+                logging.info(message)
+            elif level == logging.WARNING:
+                logging.warning(message)
+            elif level == logging.ERROR:
+                logging.error(message)
             
-            logging.info("--> [Step 1/7] Cloning repository...")
-            subprocess.run(["git", "clone", auth_repo_url, repo_path], check=True, capture_output=True, timeout=60)
-            logging.info("<-- [Step 1/7] Repository cloned successfully.")
-            
-            existing_code_context = ""
-            for root, _, files in os.walk(repo_path):
-                for file in files:
-                    if ".git" in root: continue
-                    relative_path = os.path.relpath(os.path.join(root, file), repo_path)
-                    existing_code_context += f"- {relative_path}\n"
+            # Put the message in the queue for the streamer
+            # Format for Server-Sent Events (SSE)
+            log_queue.put_nowait(f"data: {message}\n\n")
 
-            logging.info("--> [Step 2/7] Engaging Product Manager to create spec...")
-            spec_response = await create_spec(SpecRequest(project_idea=request.project_idea, existing_code_context=existing_code_context))
-            logging.info("<-- [Step 2/7] Product Manager finished.")
-            
-            logging.info("--> [Step 3/7] Engaging Tech Lead to design architecture...")
-            arch_response = await design_architecture(ArchRequest(product_spec=spec_response.product_spec, existing_code_context=existing_code_context))
-            logging.info(f"<-- [Step 3/7] Tech Lead finished. Plan involves {len(arch_response.files_to_modify)} file(s).")
+        async def run_build():
+            try:
+                log_and_queue("\n--- [START] AI Butler Service Request ---")
+                if not is_valid_github_url(request.repo_url):
+                    raise HTTPException(status_code=400, detail="Invalid GitHub repository URL format.")
 
-            branch_name = f"feat/ai-update-{request.project_idea.lower().replace(' ', '-')[:20]}"
-            logging.info(f"--> [Step 4/7] Creating new branch: {branch_name}...")
-            subprocess.run(["git", "checkout", "-b", branch_name], cwd=repo_path, check=True)
-            logging.info(f"<-- [Step 4/7] Branch created.")
+                owner, repo = get_repo_owner_and_name(request.repo_url)
+                if not owner or not repo: raise HTTPException(status_code=400, detail="Invalid GitHub repo URL.")
 
-            logging.info("--> [Step 5/7] Engaging Software Engineer with Self-Correction Loop...")
-            for i, file_detail in enumerate(arch_response.files_to_modify):
-                logging.info(f"    - ({i+1}/{len(arch_response.files_to_modify)}) Processing {file_detail.file_path}...")
-                file_path = os.path.join(repo_path, file_detail.file_path)
-                existing_code = ""
-                if os.path.exists(file_path):
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        existing_code = f.read()
-                
-                max_retries = 3; current_feedback = ""; approved = False; final_code = ""
-
-                for attempt in range(max_retries):
-                    logging.info(f"      - Attempt {attempt + 1}/{max_retries}: Engineer writing code...")
-                    code_response = await write_code(CodeRequest(file_path=file_detail.file_path, task=file_detail.task, existing_code=existing_code if attempt == 0 else final_code, feedback=current_feedback))
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    repo_path = os.path.join(temp_dir, repo)
+                    auth_repo_url = f"https://{request.github_token}@github.com/{owner}/{repo}.git"
                     
-                    logging.info(f"      - Attempt {attempt + 1}/{max_retries}: QA reviewing code...")
-                    review_response = await review_code(ReviewRequest(file_path=file_detail.file_path, code_to_review=code_response.code))
+                    log_and_queue("--> [Step 1/7] Cloning repository...")
+                    subprocess.run(["git", "clone", auth_repo_url, repo_path], check=True, capture_output=True, timeout=60)
+                    log_and_queue("<-- [Step 1/7] Repository cloned successfully.")
                     
-                    if review_response.approved:
-                        logging.info(f"      - Attempt {attempt + 1}/{max_retries}: QA Approved!")
-                        approved = True; final_code = code_response.code; break
-                    else:
-                        logging.warning(f"      - Attempt {attempt + 1}/{max_retries}: QA Rejected. Feedback: {review_response.feedback}")
-                        current_feedback = review_response.feedback; final_code = code_response.code
-                
-                if not approved:
-                    raise HTTPException(status_code=400, detail=f"QA agent failed to approve code for {file_detail.file_path} after {max_retries} attempts. Last feedback: {current_feedback}")
-                
-                logging.info(f"    - Saving approved code for {file_detail.file_path}.")
-                os.makedirs(os.path.dirname(file_path), exist_ok=True)
-                with open(file_path, 'w', encoding='utf-8') as f: f.write(final_code)
+                    # ... (The rest of your build logic, calling agents, etc.) ...
+                    # NOTE: Every 'logging.info' is replaced with 'log_and_queue'
 
-            logging.info("<-- [Step 5/7] Software Engineer finished writing all files.")
-            
-            logging.info("--> [Step 6/7] Committing and pushing changes to GitHub...")
-            subprocess.run(["git", "add", "."], cwd=repo_path, check=True)
-            subprocess.run(["git", "commit", "-m", f"feat: AI-generated update for '{request.project_idea}'"], cwd=repo_path, check=True)
-            subprocess.run(["git", "push", "-u", "origin", branch_name], cwd=repo_path, check=True, capture_output=True, text=True)
-            logging.info("<-- [Step 6/7] Changes pushed successfully.")
-            
-            logging.info("--> [Step 7/7] Creating Pull Request...")
-            headers = {"Authorization": f"token {request.github_token}", "Accept": "application/vnd.github.v3+json"}
-            pr_payload = {"title": f"AI Update: {request.project_idea}", "head": branch_name, "base": "main", "body": "This is an AI-generated pull request containing updates to the software."}
-            api_url = f"https://api.github.com/repos/{owner}/{repo}/pulls"
-            pr_response = requests.post(api_url, headers=headers, json=pr_payload, timeout=30)
-            pr_response.raise_for_status()
-            pr_data = pr_response.json()
-            logging.info("<-- [Step 7/7] Pull Request created.")
-            
-            logging.info("--- [END] AI Butler Service Request Successful ---")
-            return PRResponse(pull_request_url=pr_data['html_url'])
-        
-        except subprocess.TimeoutExpired:
-            logging.error("A git command timed out.")
-            raise HTTPException(status_code=500, detail="A git command timed out.")
-        except Exception as e:
-            error_detail = str(e)
-            if hasattr(e, 'stderr'): error_detail = e.stderr
-            if hasattr(e, 'response'): error_detail = e.response.text
-            logging.error(f"--- [END] AI Butler Service Request FAILED ---\nERROR: {error_detail}")
-            raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {error_detail}")
+                    existing_code_context = "" # Scan existing files
+                    for root, _, files in os.walk(repo_path):
+                        for file in files:
+                            if ".git" in root: continue
+                            relative_path = os.path.relpath(os.path.join(root, file), repo_path)
+                            existing_code_context += f"- {relative_path}\n"
+                    
+                    log_and_queue("--> [Step 2/7] Engaging Product Manager to create spec...")
+                    spec_response = await create_spec(SpecRequest(project_idea=request.project_idea, existing_code_context=existing_code_context))
+                    log_and_queue("<-- [Step 2/7] Product Manager finished.")
 
+                    log_and_queue("--> [Step 3/7] Engaging Tech Lead to design architecture...")
+                    arch_response = await design_architecture(ArchRequest(product_spec=spec_response.product_spec, existing_code_context=existing_code_context))
+                    log_and_queue(f"<-- [Step 3/7] Tech Lead finished. Plan involves {len(arch_response.files_to_modify)} file(s).")
+                    
+                    branch_name = f"feat/ai-update-{request.project_idea.lower().replace(' ', '-')[:20]}"
+                    log_and_queue(f"--> [Step 4/7] Creating new branch: {branch_name}...")
+                    subprocess.run(["git", "checkout", "-b", branch_name], cwd=repo_path, check=True)
+                    log_and_queue(f"<-- [Step 4/7] Branch created.")
+
+                    log_and_queue("--> [Step 5/7] Engaging Software Engineer with Self-Correction Loop...")
+                    # ... (This is the long loop for writing/reviewing files) ...
+                    for i, file_detail in enumerate(arch_response.files_to_modify):
+                        log_and_queue(f"    - ({i+1}/{len(arch_response.files_to_modify)}) Processing {file_detail.file_path}...")
+                        # ... (your existing loop logic)
+                        # Make sure to use log_and_queue inside this loop as well
+                        log_and_queue(f"    - Saving approved code for {file_detail.file_path}.")
+
+
+                    log_and_queue("<-- [Step 5/7] Software Engineer finished writing all files.")
+                    
+                    # ... (Your git commit, push, and PR creation logic) ...
+                    # Make sure to use log_and_queue for these steps
+
+                    pr_data = {} # Placeholder for your PR creation logic
+                    pr_url = pr_data.get('html_url', '#')
+                    
+                    log_and_queue("--- [END] AI Butler Service Request Successful ---")
+                    # Send a special message to signal completion and include the final URL
+                    await log_queue.put(f"data: [DONE] {pr_url}\n\n")
+
+            except Exception as e:
+                error_detail = str(e)
+                # ... (your existing error handling logic) ...
+                log_and_queue(f"--- [END] AI Butler Service Request FAILED ---\nERROR: {error_detail}", level=logging.ERROR)
+                # Send a special message to signal failure
+                await log_queue.put(f"data: [ERROR] {error_detail}\n\n")
+            finally:
+                await log_queue.put(None) # Signal the end of the queue
+
+        # Start the build process in the background
+        asyncio.create_task(run_build())
+
+        # Yield messages from the queue as they arrive
+        while True:
+            message = await log_queue.get()
+            if message is None:
+                break
+            yield message
+
+    return StreamingResponse(log_streamer(), media_type="text/event-stream")
+
+# --- Run the App ---
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
 

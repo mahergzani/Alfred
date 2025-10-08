@@ -100,7 +100,6 @@
 
     <script>
         // --- CONFIGURATION ---
-        // This should match the URL from your ngrok terminal
         const NGROK_BASE_URL = "https://merited-blotchier-linn.ngrok-free.dev";
 
         // --- DOM ELEMENTS ---
@@ -116,19 +115,20 @@
         const errorMessage = document.getElementById('error-message');
         const errorDetails = document.getElementById('error-details');
 
+        let eventSource; // To hold our connection
+
         // --- UI HELPER FUNCTIONS ---
-        const addLog = (message, level = 'info') => {
+        const addLog = (message) => {
             const logLine = document.createElement('div');
-            logLine.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
-            logLine.className = `log-line ${level}`;
+            logLine.textContent = message;
+            logLine.className = 'log-line info';
             logContainer.appendChild(logLine);
-            logContainer.scrollTop = logContainer.scrollHeight; // Auto-scroll to bottom
+            logContainer.scrollTop = logContainer.scrollHeight;
         };
 
         const showError = (message) => {
             errorDetails.textContent = message;
             errorMessage.classList.remove('hidden');
-            addLog(`ERROR: ${message}`, 'error');
         };
         
         const resetUI = () => {
@@ -138,6 +138,9 @@
             errorMessage.classList.add('hidden');
             buildBtn.disabled = false;
             buildBtn.innerHTML = '<svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg> Engage Alfred';
+            if (eventSource) {
+                eventSource.close();
+            }
         };
 
         // --- CORE LOGIC ---
@@ -158,44 +161,47 @@
             buildBtn.disabled = true;
             buildBtn.textContent = 'Working...';
             resultsContainer.classList.remove('hidden');
+            addLog("Connecting to the AI Butler Service...");
 
-            try {
-                // We make a single call to the backend endpoint that orchestrates the entire process.
-                // The backend will stream log updates back to us.
-                const response = await fetch(`${NGROK_BASE_URL}/create-pull-request`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        repo_url: repoUrl,
-                        github_token: githubToken,
-                        project_idea: projectIdea
-                    })
-                });
+            // Use EventSource to connect to our streaming endpoint
+            eventSource = new EventSource(`${NGROK_BASE_URL}/create-pull-request`, {
+                method: 'POST', // NOTE: EventSource with POST is not standard, this is a workaround
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    repo_url: repoUrl,
+                    github_token: githubToken,
+                    project_idea: projectIdea
+                })
+            });
 
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.detail || 'An unknown error occurred on the server.');
+            eventSource.onmessage = function(event) {
+                const message = event.data;
+
+                if (message.startsWith('[DONE]')) {
+                    const prUrl = message.substring(7); // Get the URL part
+                    addLog("Build successful! Pull request created.");
+                    finalMessage.textContent = "Your new software is ready for review, sir.";
+                    finalRepoLink.href = prUrl;
+                    finalResult.classList.remove('hidden');
+                    eventSource.close();
+                    resetUI(); // Or just re-enable the button
+                } else if (message.startsWith('[ERROR]')) {
+                    const errorMsg = message.substring(8);
+                    showError(errorMsg);
+                    eventSource.close();
+                    resetUI();
+                } else {
+                    addLog(message);
                 }
-                
-                // If the request is successful, the process is complete.
-                // The 'main.py' script runs synchronously and only returns upon completion or failure.
-                // The logs on your ngrok terminal show the detailed step-by-step progress.
-                const prData = await response.json();
+            };
 
-                addLog("--- [END] AI Butler Service Request Successful ---", 'success');
-                finalMessage.textContent = "Your new software is ready for review, sir.";
-                finalRepoLink.href = prData.pull_request_url;
-                finalResult.classList.remove('hidden');
-                
-            } catch (error) {
-                console.error('An error occurred during the build:', error);
-                showError(error.message);
-            } finally {
-                buildBtn.disabled = false;
-                buildBtn.innerHTML = '<svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg> Engage Alfred';
-            }
+            eventSource.onerror = function(error) {
+                console.error('EventSource failed:', error);
+                showError('Connection to the server was lost. Please check the console and try again.');
+                eventSource.close();
+                resetUI();
+            };
         }
     </script>
-
 </body>
 </html>
