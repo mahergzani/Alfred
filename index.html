@@ -118,6 +118,19 @@
             chatWindow.appendChild(alfredThinkingDiv);
             chatWindow.scrollTop = chatWindow.scrollHeight;
 
+            // --- START CLIENT-SIDE MODIFICATION ---
+            const payload = {
+                history: conversationHistory,
+            };
+            
+            // ONLY include session_id in the payload if it is a string (i.e., not null)
+            // This prevents sending {"session_id": null} on the first request, 
+            // which fixes the 422 error.
+            if (sessionId !== null) {
+                payload.session_id = sessionId;
+            }
+            // --- END CLIENT-SIDE MODIFICATION ---
+
             try {
                 const response = await fetch(`${NGROK_BASE_URL}/build-project`, { // New endpoint name
                     method: 'POST',

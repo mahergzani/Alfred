@@ -151,13 +151,6 @@ async def build_project(request: BuildRequest):
         generated_files: Dict[str, str] = {}
 
         async def log_and_queue(message, level=logging.INFO, is_raw=False):
-            
-            # --- TEMPORARY TEST ---
-            # Only process raw messages ([FILE], [DONE], etc.) and ignore all others.
-            if not is_raw:
-                return 
-            # --- END TEST ---
-
             # Log to console for backend debugging
             if not is_raw:
                 if level == logging.INFO: logging.info(message)
@@ -171,17 +164,28 @@ async def build_project(request: BuildRequest):
 
         async def run_build():
             try:
+                session_id = request.session_id # This will be None on a new request
                 # --- NEW: SESSION AND FOLDER HANDLING ---
                 if session_id:
                     project_path = os.path.join("project_builds", session_id)
-                    await log_and_queue(f"Continuing session: {session_id}")
+                    # Check if the folder exists (safety check for continuing session)
+                    if os.path.exists(project_path):
+                        await log_and_queue(f"[SESSION_ID]{session_id}", is_raw=True)
+                        await log_and_queue(f"Continuing session: {session_id}")
+                    else:
+                         # Client provided an ID but the folder doesn't exist (can happen)
+                         os.makedirs(project_path, exist_ok=True)
+                         await log_and_queue(f"[SESSION_ID]{session_id}", is_raw=True)
+                         await log_and_queue(f"Starting NEW session with client ID: {session_id}")
                 else:
+                    # No session_id provided: Server generates a new one
                     session_id = str(uuid.uuid4())
                     project_path = os.path.join("project_builds", session_id)
                     os.makedirs(project_path, exist_ok=True)
+                    
+                    # The client MUST consume this message to store the new ID
+                    await log_and_queue(f"[SESSION_ID]{session_id}", is_raw=True) 
                     await log_and_queue(f"Starting new session: {session_id}")
-                    # Send the new session ID to the client
-                    await log_and_queue(f"[SESSION_ID]{session_id}", is_raw=True)
                 # --- END SESSION HANDLING ---
 
                 await log_and_queue("--- [START] AI Butler Service Request ---")
