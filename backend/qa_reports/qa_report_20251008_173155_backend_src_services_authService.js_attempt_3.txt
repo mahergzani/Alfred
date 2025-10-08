@@ -1,0 +1,51 @@
+The `authService.js` file demonstrates good security practices overall, including password hashing with bcrypt, JWT signing with specified algorithms and expirations, refresh token rotation using JTI and hashing before database storage, and proper exclusion of sensitive data like passwords from user responses.
+
+However, a critical security/logic flaw exists within the `refreshTokens` function's error handling:
+
+**Issue:**
+In the `refreshTokens` function, when `jwt.verify` fails (e.g., due to an expired or invalid refresh token), the `catch` block attempts to call `revokeAllUserRefreshTokens(error.id || (decoded ? decoded.id : null))`. This line is problematic for several reasons:
+1.  **`error.id`:** The `jsonwebtoken` library's error objects (e.g., `TokenExpiredError`, `JsonWebTokenError`) do not typically have an `id` property that would correspond to a user ID or JTI. This part of the expression will almost certainly evaluate to `null` or `undefined`.
+2.  **`decoded`:** If `jwt.verify` throws an error, the `decoded` variable will not be assigned a value and will remain `undefined`. Therefore, `(decoded ? decoded.id : null)` will always evaluate to `null`.
+
+**Impact:**
+As a result, `revokeAllUserRefreshTokens` will be called with `null` or `undefined` as the `userId`, which means no tokens will be revoked in the event of an invalid or expired refresh token. This defeats the intended aggressive refresh token revocation strategy, which is a key security measure against refresh token reuse attacks (e.g., if an attacker uses an expired token, the original user's other valid refresh tokens are not revoked).
+
+**Recommendation:**
+To correctly implement the aggressive revocation in the `refreshTokens` function's `catch` block, you need to extract the user ID reliably from the error. For `TokenExpiredError` specifically, the `error` object provides a `payload` property containing the claims of the expired (but otherwise valid) token. For other types of `JsonWebTokenError` (e.g., invalid signature, malformed token), it's generally safer *not* to use the payload, as it could be forged. A more robust approach would be:
+
+```javascript
+const refreshTokens = async (oldRefreshToken) => {
+  if (!oldRefreshToken) {
+    throw new Error('Refresh token is required.');
+  }
+
+  let decodedPayload;
+  try {
+    decodedPayload = jwt.verify(oldRefreshToken, REFRESH_TOKEN_SECRET, { algorithm: 'HS256' });
+  } catch (error) {
+    let userIdFromExpiredToken = null;
+    // If the token is merely expired, its payload is still trustworthy for identification.
+    if (error.name === 'TokenExpiredError' && error.payload && error.payload.id) {
+      userIdFromExpiredToken = error.payload.id;
+    } 
+    // For other JWT errors (e.g., invalid signature, malformed), 
+    // it's generally unsafe to trust the token's payload for revocation, 
+    // as the userId could be forged. So we don't aggressively revoke.
+
+    if (userIdFromExpiredToken) {
+      // Revoke all tokens for this user if an expired, but otherwise valid, token was presented.
+      await revokeAllUserRefreshTokens(userIdFromExpiredToken);
+    }
+    
+    // Always throw an error as the refresh attempt was unsuccessful.
+    throw new Error('Invalid or expired refresh token.');
+  }
+
+  const { id: userId, email, role, jti } = decodedPayload;
+
+  // Rest of the refresh token logic follows...
+  // ...
+};
+```
+
+This modification ensures that `revokeAllUserRefreshTokens` is called with a valid user ID when a *trusted* (though expired) token is presented, enhancing security against token reuse. For truly invalid/malformed tokens, it correctly avoids acting on potentially forged data.

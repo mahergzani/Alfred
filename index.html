@@ -175,10 +175,45 @@
                                 alfredResponseText += `\nERROR: ${message.substring(8).trim()}`;
                                 break;
                             } else if (message.startsWith('[FILE]')) {
-                                const fileJson = message.substring(7).trim();
-                                const fileData = JSON.parse(fileJson);
-                                generatedFiles.push(fileData);
-                                alfredResponseText += `\n[Generated File: ${fileData.path}]`;
+                                let fileJson = message.substring(7).trim();
+
+                                // --- ROBUST JSON CLEANING SOLUTION ---
+                                // 1. Strip markdown fences if present (e.g., from an overly verbose AI response)
+                                if (fileJson.startsWith('```')) {
+                                    fileJson = fileJson.substring(fileJson.indexOf('\n') + 1);
+                                }
+                                if (fileJson.endsWith('```')) {
+                                    fileJson = fileJson.substring(0, fileJson.lastIndexOf('```'));
+                                }
+                                
+                                // 2. Trim whitespace again, just in case
+                                fileJson = fileJson.trim(); 
+                                
+                                // 3. Find the first '{' and the last '}' to isolate the pure JSON object
+                                const start = fileJson.indexOf('{');
+                                const end = fileJson.lastIndexOf('}');
+                                
+                                if (start === -1 || end === -1 || start > end) {
+                                    // If we can't find a clear JSON object, log an error and skip the file.
+                                    console.error("Critical: Could not isolate JSON object in [FILE] message:", fileJson);
+                                    alfredResponseText += `\n[ERROR: Failed to parse file data]`;
+                                    continue; // Skip to the next chunk
+                                }
+                                
+                                // Extract only the content between the first '{' and the last '}' (inclusive)
+                                fileJson = fileJson.substring(start, end + 1);
+                                
+                                // --- END ROBUST CLEANING ---
+
+                                try {
+                                    const fileData = JSON.parse(fileJson);
+                                    generatedFiles.push(fileData);
+                                    alfredResponseText += `\n[Generated File: ${fileData.path}]`;
+                                } catch (e) {
+                                    console.error("Critical: Final JSON.parse failed after cleaning:", e);
+                                    alfredResponseText += `\n[CRITICAL PARSE ERROR for file data]`;
+                                }
+                                
                             } else {
                                 alfredResponseText += `\n${message}`;
                             }

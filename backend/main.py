@@ -13,7 +13,7 @@ import google.generativeai as genai
 import os
 from dotenv import load_dotenv
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Optional
 import json
 import logging
 
@@ -60,7 +60,7 @@ class ChatMessage(BaseModel):
 
 class BuildRequest(BaseModel):
     history: List[ChatMessage]
-    session_id: str = None
+    session_id: Optional[str] = None
 
 # --- Agent 1: Product Manager ---
 class SpecRequest(BaseModel):

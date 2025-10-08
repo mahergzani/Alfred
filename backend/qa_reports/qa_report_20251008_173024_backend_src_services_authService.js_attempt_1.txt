@@ -1,0 +1,11 @@
+The `AuthService` class demonstrates a very high quality of code, functionality, and security. The implementation of refresh token rotation with immediate invalidation of old tokens, coupled with the mass revocation of all user tokens upon detecting a reused/stolen token, is particularly robust and follows best practices for JWT security. Password hashing with bcrypt, proper handling of environment variables for secrets, and Google OAuth2 ID token verification with audience checks are all correctly implemented.
+
+However, I've identified one minor area for improvement that could lead to unexpected behavior:
+
+1.  **`_getRefreshTokenExpirationMs()` Unit Parsing Default**: The method to parse refresh token expiration (e.g., '7d') has a default behavior that could be problematic. If `JWT_REFRESH_EXPIRATION` is set to a value with an unrecognized unit (e.g., '10x' or just '10'), `parseInt(expiresIn, 10)` will correctly parse `10`, but then it will fall through the `if/else if` statements and default to `value * 1000`, resulting in a 10-second expiration. This short duration could cause unexpected logout behavior for users, especially if an environment variable is misconfigured. It would be safer to:
+    *   Explicitly throw an error if the unit is not recognized.
+    *   Or, if a default is desired, default to a sensible long duration (e.g., 7 days) instead of 10 seconds if parsing fails or the unit is invalid. 
+    
+    While the provided default `JWT_REFRESH_EXPIRATION` in the code is `'7d'`, a robust system should handle unexpected inputs from environment variables more gracefully.
+
+This is a minor point in an otherwise excellent and secure codebase. Addressing this edge case would make the service even more resilient to configuration errors.

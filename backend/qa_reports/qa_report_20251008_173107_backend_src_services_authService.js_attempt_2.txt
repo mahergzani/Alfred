@@ -1,0 +1,23 @@
+The `authService.js` file demonstrates a high level of quality, robust error handling, and implements several security best practices, particularly around JWT and refresh token management. The use of `bcryptjs` for password hashing, `jti` for refresh token uniqueness and rotation, and comprehensive revocation mechanisms are commendable.
+
+However, one critical security improvement is recommended:
+
+**Security Vulnerability: Storing Refresh Tokens Directly in the Database**
+
+**Issue**: The `refreshToken` is stored directly in plain text (as a JWT string) in the `prisma.refreshToken` model (e.g., in `registerUser`, `loginUser`, `refreshTokens`, `googleLogin`). If the database is compromised, an attacker would gain immediate access to active refresh tokens, allowing them to forge new access tokens and hijack user sessions until these tokens expire or are explicitly revoked. While JWTs are signed and contain user information, the token itself acts as a bearer credential.
+
+**Recommendation**: Hash the refresh tokens before storing them in the database. When a refresh token comes in from a client, hash it and compare the hash with the stored hash in the database. This ensures that even if the database is breached, the raw refresh tokens are not exposed. Only their hashes are. This provides a significant layer of defense, similar to how passwords are never stored directly.
+
+Example modification:
+
+1.  **Before storing**: `const hashedRefreshToken = await bcrypt.hash(refreshToken, BCRYPT_SALT_ROUNDS);` (or a similar secure hashing algorithm, though bcrypt is generally good for this too).
+2.  **When creating/updating**: Store `hashedRefreshToken` instead of `refreshToken`.
+3.  **Before lookup/verification**: `const incomingHashedRefreshToken = await bcrypt.hash(oldRefreshToken, BCRYPT_SALT_ROUNDS);` then compare `incomingHashedRefreshToken` with `storedToken.token` (assuming you change the `token` field to store the hash).
+
+**Other Minor Improvements/Considerations:**
+
+*   **Explicit JWT Algorithm**: While `jsonwebtoken` defaults to 'HS256', explicitly specifying the `algorithm` in `jwt.sign` and `jwt.verify` calls (e.g., `algorithm: 'HS256'`) is a good practice to prevent potential algorithm confusion attacks, though modern `jsonwebtoken` versions are more resilient to this.
+*   **Rate Limiting**: Although outside the scope of this specific service file, ensure that authentication endpoints that call these methods (e.g., `/register`, `/login`, `/refresh`) have appropriate rate limiting implemented at the API gateway or controller level to prevent brute-force and denial-of-service attacks.
+*   **Consistent User Selects**: The `select` statements for `prisma.user` differ slightly between `registerUser`, `loginUser`, and `googleLogin` (e.g., `name` and `picture` are included in some but not all). For consistency in API responses, consider making these uniform or documenting the intentional differences.
+
+Addressing the refresh token storage issue is crucial for enhancing the overall security posture of the application.
