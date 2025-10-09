@@ -1,4 +1,20 @@
-AI-Powered Software Development Team
+# Alfred - AI-Powered Software Development Team
+
+Alfred orchestrates a team of specialized AI agents to autonomously build and develop secure software based on a high-level user request. It follows a modern software development lifecycle (SDLC) where security is an integral part of every step.
+
+## 🚀 Quick Start
+
+**Ready to run Alfred on your device?** See [INSTALLATION.md](INSTALLATION.md) for detailed setup instructions.
+
+**TL;DR:**
+```bash
+git clone https://github.com/mahergzani/Alfred.git
+cd Alfred/backend
+cp .env.example .env  # Add your GOOGLE_API_KEY
+./start.sh  # On macOS/Linux, or start.bat on Windows
+```
+
+Then visit: http://localhost:8000-Powered Software Development Team
 This project orchestrates a team of specialized AI agents to autonomously build and develop secure software based on a high-level user request. It follows a modern software development lifecycle (SDLC) where security is an integral part of every step.
 
 The AI Agent Team
